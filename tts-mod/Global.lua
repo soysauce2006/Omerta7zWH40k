@@ -421,6 +421,21 @@ end
 -- FTC fires these as global functions; we override them here.
 -- Always call the previous definition first so other mods can chain.
 
+-- ── Sync helper: find which team owns a given player colour ──────────
+local function syncTeamFromPlayer(playerColor)
+    if not playerColor or #teamConfig.teams == 0 then return end
+    local lc = playerColor:lower()
+    for i, t in ipairs(teamConfig.teams) do
+        for _, p in ipairs(t.players) do
+            if p:lower() == lc then
+                teamConfig.activeTeam = i
+                return
+            end
+        end
+    end
+    -- Player not found in any team — leave activeTeam unchanged.
+end
+
 local _prev_onFTCPhaseStart = onFTCPhaseStart  -- may be nil
 function onFTCPhaseStart(phaseName, playerColor)
     if _prev_onFTCPhaseStart then _prev_onFTCPhaseStart(phaseName, playerColor) end
@@ -429,11 +444,15 @@ function onFTCPhaseStart(phaseName, playerColor)
         turnState.phase = idx
         turnState.activePlayer = playerColor or turnState.activePlayer
     end
+    -- Keep the teams panel's active-army label in sync
+    syncTeamFromPlayer(playerColor)
+    refreshTeamUI()
     printToAll(
-        string.format("[FTC │ Turn] Round %d — %s  [%s]",
+        string.format("[FTC │ Turn] Round %d — %s  [%s]  ▸ %s",
             turnState.round,
             phaseName or "?",
-            playerColor or "?"),
+            playerColor or "?",
+            activeArmyLabel()),
         {r=0.6, g=0.9, b=1})
 end
 
@@ -442,15 +461,38 @@ function onFTCRoundStart(roundNumber)
     if _prev_onFTCRoundStart then _prev_onFTCRoundStart(roundNumber) end
     turnState.round = roundNumber or (turnState.round + 1)
     turnState.phase = 1
+    -- Don't reset activeTeam here — onFTCTurnStart fires immediately after
+    -- and will sync to the correct army for whoever goes first.
     log("=== FTC Round " .. turnState.round .. " begins! ===")
+    refreshTeamUI()
 end
 
--- FTC also fires onFTCTurnStart(playerColor) when turn ownership swaps
+-- FTC fires onFTCTurnStart(playerColor) each time turn ownership swaps.
+-- We use this to keep the Teams panel's active army badge current.
 local _prev_onFTCTurnStart = onFTCTurnStart
 function onFTCTurnStart(playerColor)
     if _prev_onFTCTurnStart then _prev_onFTCTurnStart(playerColor) end
     turnState.activePlayer = playerColor or turnState.activePlayer
-    log("FTC: " .. tostring(playerColor) .. "'s turn.")
+    syncTeamFromPlayer(playerColor)
+    refreshTeamUI()
+
+    -- Announce army change in chat so all players see the handoff
+    local t = teamConfig.teams[teamConfig.activeTeam]
+    if t then
+        -- Safe hex→RGB parse: colour strings are "#rrggbb"; fall back on cyan
+        local function hexByte(s, pos)
+            return (tonumber("0x" .. (s:sub(pos, pos+1))) or 0) / 255
+        end
+        local col = (t.color and #t.color == 7)
+            and { r = hexByte(t.color,2), g = hexByte(t.color,4), b = hexByte(t.color,6) }
+            or  { r = 0.6, g = 0.9, b = 1 }
+        printToAll(
+            string.format("[Teams] %s's turn — army: %s",
+                playerColor or "?", activeArmyLabel()),
+            col)
+    else
+        log("FTC: " .. tostring(playerColor) .. "'s turn.")
+    end
 end
 
 ------------------------------------------------------------------------
@@ -1870,7 +1912,7 @@ local function buildXml(ftcMode)
      TEAMS & MATCH FORMAT PANEL
      ══════════════════════════════════════════════════════════════════ -->
 <Panel id="teams_panel" active="false"
-       position="-310 200 0" width="430" height="440"
+       position="0 80 0" width="430" height="440"
        color="#12121e" allowDragging="true"
        showAnimation="Grow" hideAnimation="Shrink">
   <VerticalLayout padding="8 8 8 8" spacing="6">

@@ -367,24 +367,56 @@ function onFTCTurnStart(playerColor)
 end
 
 ------------------------------------------------------------------------
--- WOUND TRACKER
+-- WOUND TRACKER — model-aware damage allocation
+--
+--  Each unit stores:
+--    woundsPerModel      — W characteristic from the datasheet
+--    totalModels         — starting model count
+--    models              — currently living models
+--    currentModelWounds  — wounds left on the front model being damaged
+--    max / current       — derived totals for the HP bar
+--
+--  Damage is allocated one wound at a time to the front model.
+--  When that model reaches 0 it is removed and remaining damage
+--  carries over to the next, exactly per the WH40K core rules.
 ------------------------------------------------------------------------
+
+-- Recompute the derived totals from model state
+local function syncUnitTotals(unit)
+    unit.max     = unit.totalModels * unit.woundsPerModel
+    unit.current = (unit.models > 0)
+        and ((unit.models - 1) * unit.woundsPerModel + unit.currentModelWounds)
+        or  0
+end
+
 local function refreshWoundUI()
     for i = 1, MAX_UNITS do
         local unit = woundTracker[i]
         if unit then
             UI.setAttribute("wt_row_"  .. i, "active", "true")
             UI.setAttribute("wt_name_" .. i, "text",   unit.name)
+
             local hp  = math.max(0, unit.current)
             local max = math.max(1, unit.max)
             local pct = math.floor((hp / max) * 100)
+
             local barCol = pct > 60 and "#2dc653"
                         or pct > 30 and "#f4a261"
                         or             "#e63946"
-            UI.setAttribute("wt_hp_"  .. i, "text",       hp .. "/" .. max)
-            UI.setAttribute("wt_bar_" .. i, "fillAmount",  tostring(pct / 100))
-            UI.setAttribute("wt_bar_" .. i, "color",       barCol)
-            -- Show FTC indicator badge
+
+            -- Model count badge e.g. "4/5×2W"
+            local wpm      = unit.woundsPerModel or 1
+            local mCur     = unit.models         or 1
+            local mTot     = unit.totalModels    or 1
+            local modelStr = mTot > 1
+                and string.format("%d/%d×%dW", mCur, mTot, wpm)
+                or  string.format("%dW", wpm)
+
+            UI.setAttribute("wt_models_".. i, "text",       modelStr)
+            UI.setAttribute("wt_hp_"    .. i, "text",       hp .. "/" .. max)
+            UI.setAttribute("wt_bar_"   .. i, "fillAmount",  tostring(pct / 100))
+            UI.setAttribute("wt_bar_"   .. i, "color",       barCol)
+
             local ftcBadge = (unit.ftcGuid and unit.ftcGuid ~= "") and "⚙" or " "
             UI.setAttribute("wt_ftc_" .. i, "text", ftcBadge)
         else
@@ -408,28 +440,46 @@ local function findUnitByGuid(guid)
     return nil
 end
 
-function addUnit(name, maxWounds, ftcGuid)
-    maxWounds = tonumber(maxWounds) or 1
-    ftcGuid   = ftcGuid or ""
+-- addUnit(name, woundsPerModel, modelsCount [, ftcGuid])
+-- woundsPerModel = W stat from the datasheet (default 1)
+-- modelsCount    = how many models in the unit  (default 1)
+function addUnit(name, woundsPerModel, modelsCount, ftcGuid)
+    woundsPerModel = tonumber(woundsPerModel) or 1
+    modelsCount    = tonumber(modelsCount)    or 1
+    ftcGuid        = ftcGuid or ""
+
     if #woundTracker >= MAX_UNITS then
         log("Wound tracker full (" .. MAX_UNITS .. " units max).")
         return
     end
+
     local idx = findUnit(name)
     if idx then
-        woundTracker[idx].max     = maxWounds
-        woundTracker[idx].current = maxWounds
-        woundTracker[idx].ftcGuid = ftcGuid
-        log("Updated: " .. name .. " (" .. maxWounds .. "W)")
+        local u = woundTracker[idx]
+        u.woundsPerModel     = woundsPerModel
+        u.totalModels        = modelsCount
+        u.models             = modelsCount
+        u.currentModelWounds = woundsPerModel
+        u.ftcGuid            = ftcGuid
+        syncUnitTotals(u)
+        log(string.format("Updated: %s  (%d model(s) × %dW = %dW total)",
+            name, modelsCount, woundsPerModel, u.max))
     else
-        table.insert(woundTracker, {
-            name    = name,
-            max     = maxWounds,
-            current = maxWounds,
-            ftcGuid = ftcGuid,
-        })
-        log("Added: " .. name .. " (" .. maxWounds .. "W)"
-            .. (ftcGuid ~= "" and " [FTC linked]" or ""))
+        local u = {
+            name             = name,
+            woundsPerModel   = woundsPerModel,
+            totalModels      = modelsCount,
+            models           = modelsCount,
+            currentModelWounds = woundsPerModel,
+            ftcGuid          = ftcGuid,
+            max              = 0,
+            current          = 0,
+        }
+        syncUnitTotals(u)
+        table.insert(woundTracker, u)
+        log(string.format("Added: %s  (%d model(s) × %dW = %dW total)%s",
+            name, modelsCount, woundsPerModel, u.max,
+            ftcGuid ~= "" and " [FTC linked]" or ""))
     end
     refreshWoundUI()
 end
@@ -443,27 +493,90 @@ function removeUnit(indexStr)
     end
 end
 
--- Core wound application — routes through FTC.ApplyWounds if the unit is linked
+-- ── Core model-aware damage engine ───────────────────────────────────
+-- Allocates `totalDamage` one wound at a time to the front model.
+-- Returns (modelsSlain, woundsDealt).
+local function applyModelAwareDamage(unit, totalDamage)
+    local modelsSlain = 0
+    local woundsDealt = 0
+    local dmg = totalDamage
+
+    while dmg > 0 and unit.models > 0 do
+        if dmg >= unit.currentModelWounds then
+            -- Front model dies
+            dmg           = dmg - unit.currentModelWounds
+            woundsDealt   = woundsDealt + unit.currentModelWounds
+            unit.models   = unit.models - 1
+            modelsSlain   = modelsSlain + 1
+            unit.currentModelWounds = unit.models > 0 and unit.woundsPerModel or 0
+        else
+            -- Wound but don't kill
+            unit.currentModelWounds = unit.currentModelWounds - dmg
+            woundsDealt = woundsDealt + dmg
+            dmg = 0
+        end
+    end
+
+    syncUnitTotals(unit)
+    return modelsSlain, woundsDealt
+end
+
+-- ── Model-aware heal ─────────────────────────────────────────────────
+-- Heals the currently-wounded model first, then restores full models.
+local function applyModelAwareHeal(unit, amount)
+    local healed = 0
+    local gained = 0
+
+    -- 1. Top up the currently damaged model
+    if unit.models > 0 then
+        local gap = unit.woundsPerModel - unit.currentModelWounds
+        local restore = math.min(gap, amount)
+        unit.currentModelWounds = unit.currentModelWounds + restore
+        healed = healed + restore
+        amount = amount - restore
+    end
+
+    -- 2. Resurrect full models with remaining heal
+    while amount >= unit.woundsPerModel and unit.models < unit.totalModels do
+        unit.models             = unit.models + 1
+        unit.currentModelWounds = unit.woundsPerModel
+        amount = amount - unit.woundsPerModel
+        gained = gained + 1
+    end
+    -- Partial heal onto a new model if possible
+    if amount > 0 and unit.models < unit.totalModels then
+        unit.models             = unit.models + 1
+        unit.currentModelWounds = math.min(amount, unit.woundsPerModel)
+        gained = gained + 1
+    end
+
+    syncUnitTotals(unit)
+    return healed, gained
+end
+
+-- ── Public wound / heal functions ────────────────────────────────────
+
 function applyWounds(name, amount)
     amount = tonumber(amount) or 0
     local idx, unit = findUnit(name)
-    if not unit then
-        log("Unit not found: " .. tostring(name))
-        return
-    end
-    unit.current = math.max(0, unit.current - amount)
+    if not unit then log("Unit not found: " .. tostring(name)) return end
 
-    -- ── FTC bridge: also update the FTC unit card counter ───────────
+    local slain, dealt = applyModelAwareDamage(unit, amount)
+
+    -- FTC bridge
     if FTC_PRESENT and unit.ftcGuid and unit.ftcGuid ~= "" then
-        ftcCall(function()
-            FTC.ApplyWounds(unit.ftcGuid, amount)
-        end)
+        ftcCall(function() FTC.ApplyWounds(unit.ftcGuid, dealt) end)
     end
 
-    printToAll(
-        string.format("[Wounds] %s takes %d wound(s) → %d/%d remaining",
-            unit.name, amount, unit.current, unit.max),
-        unit.current == 0 and {r=1,g=0.2,b=0.2} or {r=1,g=0.85,b=0.1})
+    local col = unit.current == 0 and {r=1,g=0.2,b=0.2} or {r=1,g=0.85,b=0.1}
+    local msg = string.format("[Wounds] %s  −%d wounds", unit.name, dealt)
+    if slain > 0 then
+        msg = msg .. string.format("  ☠ %d model(s) slain", slain)
+    end
+    msg = msg .. string.format("  → %d/%d W  (%d/%d models)",
+        unit.current, unit.max, unit.models, unit.totalModels)
+    printToAll(msg, col)
+
     if unit.current == 0 then
         printToAll(string.format("[Wounds] ☠  %s is DESTROYED!", unit.name),
             {r=1, g=0.2, b=0.2})
@@ -475,21 +588,23 @@ function healUnit(name, amount)
     amount = tonumber(amount) or 1
     local idx, unit = findUnit(name)
     if not unit then log("Unit not found: " .. tostring(name)) return end
-    unit.current = math.min(unit.max, unit.current + amount)
 
-    -- ── FTC bridge: heal via FTC.HealWounds if available ────────────
+    local healed, gained = applyModelAwareHeal(unit, amount)
+
+    -- FTC bridge
     if FTC_PRESENT and unit.ftcGuid and unit.ftcGuid ~= "" then
         ftcCall(function()
-            if FTC.HealWounds then
-                FTC.HealWounds(unit.ftcGuid, amount)
-            end
+            if FTC.HealWounds then FTC.HealWounds(unit.ftcGuid, healed) end
         end)
     end
 
-    printToAll(
-        string.format("[Wounds] %s healed %d → %d/%d",
-            unit.name, amount, unit.current, unit.max),
-        {r=0.2, g=1, b=0.4})
+    local msg = string.format("[Wounds] %s  +%dW healed", unit.name, healed)
+    if gained > 0 then
+        msg = msg .. string.format("  ✚ %d model(s) restored", gained)
+    end
+    msg = msg .. string.format("  → %d/%d W  (%d/%d models)",
+        unit.current, unit.max, unit.models, unit.totalModels)
+    printToAll(msg, {r=0.2, g=1, b=0.4})
     refreshWoundUI()
 end
 
@@ -498,7 +613,9 @@ function selectUnit(indexStr)
     local u = selectedUnit and woundTracker[selectedUnit]
     if u then
         UI.setAttribute("wt_selected_label", "text",
-            "Selected: " .. u.name .. (u.ftcGuid ~= "" and " ⚙" or ""))
+            string.format("Target: %s  (%d/%d models)%s",
+                u.name, u.models, u.totalModels,
+                u.ftcGuid ~= "" and " ⚙" or ""))
     end
 end
 
@@ -506,17 +623,24 @@ function applyDamageToSelected(amount, sourceLabel)
     if not selectedUnit then return end
     local unit = woundTracker[selectedUnit]
     if not unit then selectedUnit = nil return end
-    unit.current = math.max(0, unit.current - amount)
 
-    -- ── FTC bridge ───────────────────────────────────────────────────
+    local slain, dealt = applyModelAwareDamage(unit, amount)
+
+    -- FTC bridge
     if FTC_PRESENT and unit.ftcGuid and unit.ftcGuid ~= "" then
-        ftcCall(function() FTC.ApplyWounds(unit.ftcGuid, amount) end)
+        ftcCall(function() FTC.ApplyWounds(unit.ftcGuid, dealt) end)
     end
 
-    printToAll(
-        string.format("[Wounds] %s → %s takes %d damage → %d/%d",
-            sourceLabel or "?", unit.name, amount, unit.current, unit.max),
-        unit.current == 0 and {r=1,g=0.2,b=0.2} or {r=1,g=0.85,b=0.1})
+    local col = unit.current == 0 and {r=1,g=0.2,b=0.2} or {r=1,g=0.85,b=0.1}
+    local msg = string.format("[Wounds] %s → %s  −%d damage",
+        sourceLabel or "?", unit.name, dealt)
+    if slain > 0 then
+        msg = msg .. string.format("  ☠ %d model(s) slain", slain)
+    end
+    msg = msg .. string.format("  → %d/%d W  (%d/%d models)",
+        unit.current, unit.max, unit.models, unit.totalModels)
+    printToAll(msg, col)
+
     if unit.current == 0 then
         printToAll(string.format("[Wounds] ☠  %s is DESTROYED!", unit.name),
             {r=1, g=0.2, b=0.2})
@@ -605,25 +729,38 @@ function importFtcUnit(guid)
         return
     end
 
-    -- Upsert into our tracker, preserving current HP from FTC
+    -- FTC gives wounds-per-model and model count separately when available
+    local wpm    = (data and (data.woundsPerModel or data.wounds_per_model)) or maxWounds
+    local models = (data and (data.models or data.modelCount or data.count)) or 1
+
+    -- Upsert into our tracker, preserving current state from FTC
     local idx = findUnit(name)
     if idx then
-        woundTracker[idx].max     = maxWounds
-        woundTracker[idx].current = curWounds
-        woundTracker[idx].ftcGuid = guid
+        local u = woundTracker[idx]
+        u.woundsPerModel     = wpm
+        u.totalModels        = models
+        u.models             = models
+        u.currentModelWounds = wpm
+        u.ftcGuid            = guid
+        syncUnitTotals(u)
     else
         if #woundTracker >= MAX_UNITS then
             log("Wound tracker full — could not import " .. name)
             return
         end
-        table.insert(woundTracker, {
-            name    = name,
-            max     = maxWounds,
-            current = curWounds,
-            ftcGuid = guid,
-        })
+        local u = {
+            name             = name,
+            woundsPerModel   = wpm,
+            totalModels      = models,
+            models           = models,
+            currentModelWounds = wpm,
+            ftcGuid          = guid,
+            max = 0, current = 0,
+        }
+        syncUnitTotals(u)
+        table.insert(woundTracker, u)
     end
-    log("FTC import: " .. name .. " (" .. curWounds .. "/" .. maxWounds .. "W)")
+    log(string.format("FTC import: %s  (%d×%dW)", name, models, wpm))
     refreshWoundUI()
 end
 
@@ -634,7 +771,6 @@ function importAllFtcUnits()
         return
     end
 
-    -- FTC.GetUnits() returns an array of unit data tables
     local units = ftcCall(function() return FTC.GetUnits() end)
     if not units or #units == 0 then
         log("No FTC units found. Make sure units are placed on the board.")
@@ -643,24 +779,33 @@ function importAllFtcUnits()
 
     local imported = 0
     for _, u in ipairs(units) do
-        local guid      = u.guid or u.GUID
-        local name      = u.name or u.Name
-        local maxWounds = u.wounds or u.maxWounds or u.Wounds or 1
-        local curWounds = u.curWounds or u.currentWounds or maxWounds
+        local guid   = u.guid or u.GUID
+        local name   = u.name or u.Name
+        local wpm    = u.woundsPerModel or u.wounds or u.Wounds or 1
+        local models = u.models or u.modelCount or u.count or 1
 
         if name and guid then
             local idx = findUnit(name)
             if idx then
-                woundTracker[idx].max     = maxWounds
-                woundTracker[idx].current = curWounds
-                woundTracker[idx].ftcGuid = guid
+                local t = woundTracker[idx]
+                t.woundsPerModel     = wpm
+                t.totalModels        = models
+                t.models             = models
+                t.currentModelWounds = wpm
+                t.ftcGuid            = guid
+                syncUnitTotals(t)
             elseif #woundTracker < MAX_UNITS then
-                table.insert(woundTracker, {
-                    name    = name,
-                    max     = maxWounds,
-                    current = curWounds,
-                    ftcGuid = guid,
-                })
+                local t = {
+                    name             = name,
+                    woundsPerModel   = wpm,
+                    totalModels      = models,
+                    models           = models,
+                    currentModelWounds = wpm,
+                    ftcGuid          = guid,
+                    max = 0, current = 0,
+                }
+                syncUnitTotals(t)
+                table.insert(woundTracker, t)
             end
             imported = imported + 1
         end
@@ -677,15 +822,17 @@ function openYelloscribe()   UI.show("yelloscribe_panel")  end
 function closeYelloscribe()  UI.hide("yelloscribe_panel")  end
 
 function ysSetUnit()
-    local name = UI.getValue("ys_unit_name_input")
-    local w    = tonumber(UI.getValue("ys_unit_wounds_input"))
-    if not name or name == "" or not w then
-        log("Enter unit name and wound value in the Yelloscribe panel first.")
+    local name   = UI.getValue("ys_unit_name_input")
+    local wpm    = tonumber(UI.getValue("ys_unit_wounds_input"))
+    local models = tonumber(UI.getValue("ys_unit_models_input")) or 1
+    if not name or name == "" or not wpm then
+        log("Enter unit name and W (wounds/model) in the Yelloscribe panel first.")
         return
     end
-    addUnit(name, w)
+    addUnit(name, wpm, models)
     UI.setValue("ys_unit_name_input",   "")
     UI.setValue("ys_unit_wounds_input", "")
+    UI.setValue("ys_unit_models_input", "")
 end
 
 ------------------------------------------------------------------------
@@ -777,15 +924,24 @@ function onChat(message, player)
         return false
 
     elseif cmd == "!addunit" then
-        local name, w = args:match('"([^"]+)"%s+(%d+)')
-        if not name then name, w = args:match("(%S+)%s+(%d+)") end
-        w = tonumber(w)
+        -- Formats:
+        --   !addunit "Name" <W>          — 1 model, W wounds
+        --   !addunit "Name" <W> <models> — multi-model unit
+        local name, wStr, mStr = args:match('"([^"]+)"%s+(%d+)%s*(%d*)')
+        if not name then
+            name, wStr, mStr = args:match("(%S+)%s+(%d+)%s*(%d*)")
+        end
+        local w = tonumber(wStr)
+        local m = tonumber(mStr) or 1
         if not name or not w then
-            printToColor('Usage: !addunit "Unit Name" <maxWounds>',
+            printToColor(
+                'Usage: !addunit "Name" <W/model> [models]\n'..
+                '  e.g. !addunit "Intercessors" 2 5   (5 models, 2W each)\n'..
+                '       !addunit "Dreadnought" 8       (1 model, 8W)',
                 player.color, {r=1,g=0.5,b=0})
             return false
         end
-        addUnit(name, w)
+        addUnit(name, w, m)
         return false
 
     elseif cmd == "!wound" then
@@ -868,7 +1024,7 @@ function onChat(message, player)
             "   e.g.  !attack 5 3 4 -1 2 3   (dmg: flat, D3, or D6)",
             "!save <dice> <save+> [AP]    — armour save roll",
             "!morale <Ld> <lost>          — morale test",
-            "!addunit \"Name\" <wounds>    — add unit to wound tracker",
+            "!addunit \"Name\" <W/model> [models]  — add unit (e.g. Intercessors 2 5)",
             "!wound  \"Name\" <amount>     — deal wounds to unit",
             "!heal   \"Name\" <amount>     — heal wounds on unit",
             ftcLine,
@@ -1021,27 +1177,43 @@ local function buildWoundRows()
     local rows = ""
     for i = 1, MAX_UNITS do
         rows = rows .. string.format([[
-      <HorizontalLayout id="wt_row_%d" active="false" height="38"
-                        padding="4 4 2 2" spacing="4">
-        <Button id="wt_sel_%d"  text="●" fontSize="13" width="26" height="26"
+      <HorizontalLayout id="wt_row_%d" active="false" height="40"
+                        padding="4 4 2 2" spacing="3">
+
+        <!-- Select target button -->
+        <Button id="wt_sel_%d" text="●" fontSize="13" width="26" height="26"
                 color="#2d2d44" textColor="#aaaacc" onClick="selectUnit|%d" />
-        <Text   id="wt_ftc_%d"  text=" " fontSize="12" color="#44bb88"
-                alignment="MiddleCenter" width="16" />
-        <Text   id="wt_name_%d" text="—" fontSize="13" color="White"
-                alignment="MiddleLeft" flexibleWidth="1" />
-        <Text   id="wt_hp_%d"   text="0/0" fontSize="13" color="#f4a261"
-                alignment="MiddleCenter" width="56" />
-        <Image  id="wt_bar_%d"  image="white" color="#2dc653"
-                width="70" height="14" fillAmount="1" type="Filled"
-                fillMethod="Horizontal" fillOrigin="0" />
-        <Button text="−" fontSize="15" width="26" height="26"
+
+        <!-- FTC badge -->
+        <Text id="wt_ftc_%d" text=" " fontSize="11" color="#44bb88"
+              alignment="MiddleCenter" width="14" />
+
+        <!-- Unit name -->
+        <Text id="wt_name_%d" text="—" fontSize="13" color="White"
+              alignment="MiddleLeft" flexibleWidth="1" />
+
+        <!-- Model count badge  e.g. "4/5×2W" -->
+        <Text id="wt_models_%d" text="1W" fontSize="11" color="#aaddff"
+              alignment="MiddleCenter" width="58" />
+
+        <!-- Total wounds -->
+        <Text id="wt_hp_%d" text="0/0" fontSize="12" color="#f4a261"
+              alignment="MiddleCenter" width="44" />
+
+        <!-- HP bar -->
+        <Image id="wt_bar_%d" image="white" color="#2dc653"
+               width="56" height="12" fillAmount="1" type="Filled"
+               fillMethod="Horizontal" fillOrigin="0" />
+
+        <!-- Wound / heal buttons -->
+        <Button text="−" fontSize="15" width="24" height="26"
                 color="#e63946" textColor="White" onClick="woundBtnMinus|%d" />
-        <Button text="+" fontSize="15" width="26" height="26"
+        <Button text="+" fontSize="15" width="24" height="26"
                 color="#2dc653" textColor="White" onClick="woundBtnPlus|%d" />
-        <Button text="✕" fontSize="12" width="22" height="22"
+        <Button text="✕" fontSize="12" width="20" height="22"
                 color="#555566" textColor="#aaaacc" onClick="removeUnit|%d" />
       </HorizontalLayout>
-        ]], i,i,i,i,i,i,i,i,i,i)
+        ]], i,i,i,i,i,i,i,i,i,i,i)
     end
     return rows
 end
@@ -1362,16 +1534,22 @@ local function buildXml(ftcMode)
     <VerticalLayout id="wt_unit_list" spacing="2">
       %s
     </VerticalLayout>
-    <HorizontalLayout height="32" spacing="4" color="#0a0a1a" padding="4 4 2 2">
+    <!-- Quick-add row: Name | W/model | # models | Add -->
+    <HorizontalLayout height="32" spacing="3" color="#0a0a1a" padding="4 4 2 2">
       <InputField id="wt_quick_name"   placeholder="Unit name"
-                  fontSize="13" flexibleWidth="1" height="28" />
+                  fontSize="12" flexibleWidth="1" height="28" />
       <InputField id="wt_quick_wounds" placeholder="W"
-                  fontSize="13" width="46" height="28"
+                  fontSize="12" width="38" height="28"
                   characterValidation="Integer" />
-      <Button text="Add" fontSize="13" color="#2dc653" textColor="White"
-              width="46" height="28" onClick="quickAddUnit" />
+      <Text text="×" fontSize="14" color="#aaddff"
+            alignment="MiddleCenter" width="14" />
+      <InputField id="wt_quick_models" placeholder="#"
+                  fontSize="12" width="38" height="28"
+                  characterValidation="Integer" />
+      <Button text="Add" fontSize="12" color="#2dc653" textColor="White"
+              width="44" height="28" onClick="quickAddUnit" />
     </HorizontalLayout>
-    <Text text='Or: !addunit "Name" wounds  |  !wound "Name" n  |  !ftcimport'
+    <Text text='Name | W/model × models  e.g. Intercessors 2 × 5'
           fontSize="10" color="#444466" alignment="MiddleCenter" height="16" />
   </VerticalLayout>
 </Panel>
@@ -1391,13 +1569,19 @@ local function buildXml(ftcMode)
       <Button text="✕" fontSize="18" color="#c1121f" textColor="White"
               width="40" height="40" onClick="closeYelloscribe" />
     </HorizontalLayout>
-    <HorizontalLayout height="40" color="#0a0a1a" padding="6 6 4 4" spacing="6">
-      <Text text="Add to Wound Tracker:" fontSize="13" color="#aaaacc"
-            alignment="MiddleLeft" width="156" />
+    <!-- Track bar: Name | W/model | × | # models | ✚ Track -->
+    <HorizontalLayout height="40" color="#0a0a1a" padding="6 6 4 4" spacing="5">
+      <Text text="Track:" fontSize="13" color="#aaaacc"
+            alignment="MiddleLeft" width="46" />
       <InputField id="ys_unit_name_input"   placeholder="Unit name from datasheet"
                   fontSize="13" flexibleWidth="1" height="28" />
       <InputField id="ys_unit_wounds_input" placeholder="W"
-                  fontSize="13" width="50" height="28"
+                  fontSize="13" width="42" height="28"
+                  characterValidation="Integer" />
+      <Text text="×" fontSize="14" color="#aaddff"
+            alignment="MiddleCenter" width="14" />
+      <InputField id="ys_unit_models_input" placeholder="#"
+                  fontSize="13" width="42" height="28"
                   characterValidation="Integer" />
       <Button text="✚ Track" fontSize="13" color="#2dc653" textColor="White"
               width="78" height="28" onClick="ysSetUnit" />
@@ -1440,15 +1624,17 @@ end
 -- QUICK-ADD (wound tracker panel button)
 ------------------------------------------------------------------------
 function quickAddUnit()
-    local name = UI.getValue("wt_quick_name")
-    local w    = tonumber(UI.getValue("wt_quick_wounds"))
+    local name   = UI.getValue("wt_quick_name")
+    local w      = tonumber(UI.getValue("wt_quick_wounds"))
+    local models = tonumber(UI.getValue("wt_quick_models")) or 1
     if not name or name == "" or not w then
-        log("Enter a unit name and wound value.")
+        log("Enter a unit name and W (wounds per model).")
         return
     end
-    addUnit(name, w)
+    addUnit(name, w, models)
     UI.setValue("wt_quick_name",   "")
     UI.setValue("wt_quick_wounds", "")
+    UI.setValue("wt_quick_models", "")
 end
 
 ------------------------------------------------------------------------

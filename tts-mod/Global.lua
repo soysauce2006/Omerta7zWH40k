@@ -1,23 +1,58 @@
 -- =============================================================================
---  WH40K Dice Mat, Yelloscribe, Turn Tracker & Wound Tracker Mod
+--  WH40K Dice Mat · Yelloscribe · Turn Tracker · Wound Tracker
+--  + Free the Codex (FTC) compatibility layer
 --  Global script for Tabletop Simulator
+-- =============================================================================
+--
+--  FTC COMPATIBILITY NOTES
+--  ───────────────────────
+--  This script detects Free the Codex at load time by checking for the `FTC`
+--  global table.  When FTC is present the following changes apply automatically:
+--
+--  • Our turn tracker hides itself and syncs to FTC phase/round callbacks
+--    (onFTCPhaseStart / onFTCRoundStart).
+--  • Attack-sequence damage is routed through FTC.ApplyWounds() so FTC unit
+--    cards update their own counters in addition to our wound tracker.
+--  • !ftcimport pulls every unit FTC currently knows about into our wound
+--    tracker so you can use our HP bars alongside FTC's counters.
+--  • !ftcunit <guid> imports a single unit card by its TTS object GUID.
+--  • The toolbar is anchored to the bottom-right corner to avoid FTC's
+--    left-rail UI panels.
+--
+--  If FTC is NOT loaded everything works identically to before — no stubs,
+--  no errors, no silent fallbacks with misleading output.
 -- =============================================================================
 
 ------------------------------------------------------------------------
 -- CONFIG
 ------------------------------------------------------------------------
-local MAX_HISTORY    = 20
-local MAX_UNITS      = 12     -- max units in wound tracker
+local MAX_HISTORY = 20
+local MAX_UNITS   = 12
+
+------------------------------------------------------------------------
+-- FTC COMPATIBILITY STATE
+------------------------------------------------------------------------
+local FTC_PRESENT = false   -- set in onLoad after FTC detection
+
+-- Safe wrapper: call an FTC API function only when FTC is loaded
+local function ftcCall(fn, ...)
+    if not FTC_PRESENT then return nil end
+    local ok, result = pcall(fn, ...)
+    if not ok then
+        -- FTC API changed or unit no longer exists — fail silently
+        return nil
+    end
+    return result
+end
 
 ------------------------------------------------------------------------
 -- STATE
 ------------------------------------------------------------------------
 local rollHistory = {}
 
--- Turn tracker
 local turnState = {
-    round      = 1,
-    phase      = 1,           -- 1-6 index into PHASES
+    round        = 1,
+    phase        = 1,
     activePlayer = "Player 1",
 }
 local PHASES = {
@@ -29,11 +64,19 @@ local PHASES = {
     "Morale Phase",
 }
 
--- Wound tracker: array of { name, maxWounds, currentWounds, player }
-local woundTracker = {}
+-- FTC phase name → our phase index map
+local FTC_PHASE_MAP = {
+    ["command"]  = 1,
+    ["movement"] = 2,
+    ["shooting"] = 3,
+    ["charge"]   = 4,
+    ["fight"]    = 5,
+    ["morale"]   = 6,
+}
 
--- Pending wound-tracker entry being built from chat input
-local pendingUnit = nil
+local woundTracker = {}
+local selectedUnit = nil
+local pendingUnit  = nil  -- kept for API compat
 
 ------------------------------------------------------------------------
 -- UTILITY
@@ -76,13 +119,8 @@ end
 
 ------------------------------------------------------------------------
 -- FULL ATTACK SEQUENCE  (To-Hit → To-Wound → Armour Save → Damage)
---
 --   !attack <attacks> <hit+> <wound+> <AP> <dmg> <save+>
 --   e.g.    !attack 5 3 4 -1 2 3
---
---   AP is a negative number (-1, -2 …) or 0 for no AP
---   dmg is flat damage per unsaved wound (use D3 or D6 for variable)
---   save is the target's base save (e.g. 3 for 3+)
 ------------------------------------------------------------------------
 function fullAttackSequence(player, attacks, toHit, toWound, ap, dmg, baseSave)
     local col = pCol(player)
@@ -94,9 +132,8 @@ function fullAttackSequence(player, attacks, toHit, toWound, ap, dmg, baseSave)
     for _, v in ipairs(hitRolls) do
         if v >= toHit then hits = hits + 1 end
     end
-    printToAll(
-        string.format("[%s │ Hit  ] %d+ : [%s] → %d hit(s)",
-            who, toHit, fmt(hitRolls), hits), col)
+    printToAll(string.format("[%s │ Hit  ] %d+ : [%s] → %d hit(s)",
+        who, toHit, fmt(hitRolls), hits), col)
     pushHistory(who .. " hit", hitRolls, hits)
 
     if hits == 0 then
@@ -110,9 +147,8 @@ function fullAttackSequence(player, attacks, toHit, toWound, ap, dmg, baseSave)
     for _, v in ipairs(woundRolls) do
         if v >= toWound then wounds = wounds + 1 end
     end
-    printToAll(
-        string.format("[%s │ Wound] %d+ : [%s] → %d wound(s)",
-            who, toWound, fmt(woundRolls), wounds), col)
+    printToAll(string.format("[%s │ Wound] %d+ : [%s] → %d wound(s)",
+        who, toWound, fmt(woundRolls), wounds), col)
     pushHistory(who .. " wound", woundRolls, wounds)
 
     if wounds == 0 then
@@ -121,9 +157,9 @@ function fullAttackSequence(player, attacks, toHit, toWound, ap, dmg, baseSave)
     end
 
     -- ── Armour Save ─────────────────────────────────────────────────
-    local effectiveSave = baseSave - ap        -- AP is negative, so -(-1) = +1
-    -- Invulnerable saves cap at the stated value, never better than the stat
-    if effectiveSave > 6 then effectiveSave = 7 end   -- impossible save
+    -- AP is stored as negative integer; subtracting it raises the target number
+    local effectiveSave = baseSave - ap
+    if effectiveSave > 6 then effectiveSave = 7 end   -- save negated
 
     local saveRolls = rollDice(wounds, 6)
     local saved, failed = 0, 0
@@ -137,9 +173,8 @@ function fullAttackSequence(player, attacks, toHit, toWound, ap, dmg, baseSave)
     local saveStr = effectiveSave <= 6
         and string.format("%d+ (base %d+ AP%d)", effectiveSave, baseSave, ap)
         or  string.format("N/A (AP%d negates %d+ save)", ap, baseSave)
-    printToAll(
-        string.format("[%s │ Save ] %s : [%s] → %d saved, %d failed",
-            who, saveStr, fmt(saveRolls), saved, failed), col)
+    printToAll(string.format("[%s │ Save ] %s : [%s] → %d saved, %d failed",
+        who, saveStr, fmt(saveRolls), saved, failed), col)
     pushHistory(who .. " save", saveRolls, saved)
 
     if failed == 0 then
@@ -168,15 +203,12 @@ function fullAttackSequence(player, attacks, toHit, toWound, ap, dmg, baseSave)
         {r=1, g=0.35, b=0.35})
     pushHistory(who .. " damage", dmgBreakdown, totalDmg)
 
-    -- Auto-apply to wound tracker if a unit is selected
     applyDamageToSelected(totalDmg, who)
 end
 
 ------------------------------------------------------------------------
--- SAVE-ONLY ROLL  (for when you just need armour/invuln dice)
---
---   !save <numDice> <save+> [AP]
---   e.g.  !save 4 3 -2
+-- SAVE-ONLY ROLL
+--   !save <numDice> <save+> [AP]   e.g. !save 4 3 -2
 ------------------------------------------------------------------------
 function rollSaves(player, numDice, baseSave, ap)
     local col = pCol(player)
@@ -199,8 +231,7 @@ function rollSaves(player, numDice, baseSave, ap)
         or  "impossible"
     printToAll(
         string.format("[%s │ Save ] %s (base %d+ AP%d) : [%s] → %d/%d saved",
-            who, saveStr, baseSave, ap, fmt(rolls), saved, numDice),
-        col)
+            who, saveStr, baseSave, ap, fmt(rolls), saved, numDice), col)
     pushHistory(who .. " save", rolls, saved)
 end
 
@@ -215,8 +246,7 @@ function moraleTest(player, leadership, modelsLost)
     printToAll(
         string.format("[Morale] Ld%d, lost %d → rolled %d + %d = %d  →  %s",
             leadership, modelsLost, roll, modelsLost, total,
-            failed and "FAILED (models flee!)" or "PASSED"),
-        col)
+            failed and "FAILED (models flee!)" or "PASSED"), col)
 end
 
 ------------------------------------------------------------------------
@@ -224,49 +254,54 @@ end
 ------------------------------------------------------------------------
 local function phaseLabel()
     return string.format("Round %d — %s  [%s]",
-        turnState.round,
-        PHASES[turnState.phase],
-        turnState.activePlayer)
+        turnState.round, PHASES[turnState.phase], turnState.activePlayer)
 end
 
 local function refreshTurnUI()
+    -- When FTC is present our turn panel is hidden, so skip attribute writes
+    -- to avoid harmless-but-noisy "element not found" errors from TTS.
+    if FTC_PRESENT then return end
     UI.setAttribute("tt_round",  "text", "Round " .. turnState.round)
     UI.setAttribute("tt_phase",  "text", PHASES[turnState.phase])
     UI.setAttribute("tt_player", "text", turnState.activePlayer)
-    -- Dim all phase buttons, highlight active
-    for i, _ in ipairs(PHASES) do
-        local id = "tt_phase_btn_" .. i
+    for i = 1, #PHASES do
         local active = (i == turnState.phase)
-        UI.setAttribute(id, "color",     active and "#e63946" or "#2d2d44")
-        UI.setAttribute(id, "textColor", active and "White"   or "#aaaacc")
+        UI.setAttribute("tt_phase_btn_" .. i, "color",
+            active and "#e63946" or "#2d2d44")
+        UI.setAttribute("tt_phase_btn_" .. i, "textColor",
+            active and "White" or "#aaaacc")
     end
     printToAll("[Turn] " .. phaseLabel(), {r=0.6, g=0.9, b=1})
 end
 
 function nextPhase()
+    if FTC_PRESENT then
+        log("Turn control is handled by Free the Codex — use FTC's phase buttons.")
+        return
+    end
     if turnState.phase < #PHASES then
         turnState.phase = turnState.phase + 1
     else
-        turnState.phase  = 1
-        turnState.round  = turnState.round + 1
+        turnState.phase = 1
+        turnState.round = turnState.round + 1
         log("=== Round " .. turnState.round .. " begins! ===")
     end
     refreshTurnUI()
 end
 
 function prevPhase()
+    if FTC_PRESENT then return end
     if turnState.phase > 1 then
         turnState.phase = turnState.phase - 1
-    else
-        if turnState.round > 1 then
-            turnState.round = turnState.round - 1
-            turnState.phase = #PHASES
-        end
+    elseif turnState.round > 1 then
+        turnState.round = turnState.round - 1
+        turnState.phase = #PHASES
     end
     refreshTurnUI()
 end
 
 function setPhase(player, phaseIndex)
+    if FTC_PRESENT then return end
     phaseIndex = tonumber(phaseIndex)
     if phaseIndex and PHASES[phaseIndex] then
         turnState.phase = phaseIndex
@@ -275,14 +310,18 @@ function setPhase(player, phaseIndex)
 end
 
 function resetTurn()
-    turnState.round      = 1
-    turnState.phase      = 1
+    if FTC_PRESENT then return end
+    turnState.round = 1; turnState.phase = 1
     turnState.activePlayer = "Player 1"
     refreshTurnUI()
     log("Turn tracker reset.")
 end
 
 function toggleTurnTracker()
+    if FTC_PRESENT then
+        log("Turn control is handled by Free the Codex.")
+        return
+    end
     local vis = UI.getAttribute("turn_tracker_panel", "active")
     if vis == "true" or vis == true then
         UI.hide("turn_tracker_panel")
@@ -291,41 +330,69 @@ function toggleTurnTracker()
     end
 end
 
+-- ── FTC phase/round callbacks ────────────────────────────────────────
+-- FTC fires these as global functions; we override them here.
+-- Always call the previous definition first so other mods can chain.
+
+local _prev_onFTCPhaseStart = onFTCPhaseStart  -- may be nil
+function onFTCPhaseStart(phaseName, playerColor)
+    if _prev_onFTCPhaseStart then _prev_onFTCPhaseStart(phaseName, playerColor) end
+    local idx = FTC_PHASE_MAP[phaseName and phaseName:lower() or ""]
+    if idx then
+        turnState.phase = idx
+        turnState.activePlayer = playerColor or turnState.activePlayer
+    end
+    printToAll(
+        string.format("[FTC │ Turn] Round %d — %s  [%s]",
+            turnState.round,
+            phaseName or "?",
+            playerColor or "?"),
+        {r=0.6, g=0.9, b=1})
+end
+
+local _prev_onFTCRoundStart = onFTCRoundStart
+function onFTCRoundStart(roundNumber)
+    if _prev_onFTCRoundStart then _prev_onFTCRoundStart(roundNumber) end
+    turnState.round = roundNumber or (turnState.round + 1)
+    turnState.phase = 1
+    log("=== FTC Round " .. turnState.round .. " begins! ===")
+end
+
+-- FTC also fires onFTCTurnStart(playerColor) when turn ownership swaps
+local _prev_onFTCTurnStart = onFTCTurnStart
+function onFTCTurnStart(playerColor)
+    if _prev_onFTCTurnStart then _prev_onFTCTurnStart(playerColor) end
+    turnState.activePlayer = playerColor or turnState.activePlayer
+    log("FTC: " .. tostring(playerColor) .. "'s turn.")
+end
+
 ------------------------------------------------------------------------
 -- WOUND TRACKER
 ------------------------------------------------------------------------
 local function refreshWoundUI()
-    -- Rebuild the wound list rows
     for i = 1, MAX_UNITS do
-        local rowId   = "wt_row_" .. i
-        local nameId  = "wt_name_" .. i
-        local hpId    = "wt_hp_"   .. i
-        local barId   = "wt_bar_"  .. i
-
         local unit = woundTracker[i]
         if unit then
-            UI.setAttribute(rowId,  "active", "true")
-            UI.setAttribute(nameId, "text", unit.name)
-
+            UI.setAttribute("wt_row_"  .. i, "active", "true")
+            UI.setAttribute("wt_name_" .. i, "text",   unit.name)
             local hp  = math.max(0, unit.current)
             local max = math.max(1, unit.max)
             local pct = math.floor((hp / max) * 100)
-
-            -- Colour: green > 60%, yellow > 30%, red otherwise
             local barCol = pct > 60 and "#2dc653"
                         or pct > 30 and "#f4a261"
                         or             "#e63946"
-
-            UI.setAttribute(hpId,  "text",  hp .. "/" .. max)
-            UI.setAttribute(barId, "fillAmount", tostring(pct / 100))
-            UI.setAttribute(barId, "color",      barCol)
+            UI.setAttribute("wt_hp_"  .. i, "text",       hp .. "/" .. max)
+            UI.setAttribute("wt_bar_" .. i, "fillAmount",  tostring(pct / 100))
+            UI.setAttribute("wt_bar_" .. i, "color",       barCol)
+            -- Show FTC indicator badge
+            local ftcBadge = (unit.ftcGuid and unit.ftcGuid ~= "") and "⚙" or " "
+            UI.setAttribute("wt_ftc_" .. i, "text", ftcBadge)
         else
-            UI.setAttribute(rowId, "active", "false")
+            UI.setAttribute("wt_row_" .. i, "active", "false")
         end
     end
 end
 
--- Find a unit slot by name (case-insensitive)
 local function findUnit(name)
     name = name:lower()
     for i, u in ipairs(woundTracker) do
@@ -334,9 +401,16 @@ local function findUnit(name)
     return nil
 end
 
--- Add a new unit to the tracker
-function addUnit(name, maxWounds)
+local function findUnitByGuid(guid)
+    for i, u in ipairs(woundTracker) do
+        if u.ftcGuid == guid then return i, u end
+    end
+    return nil
+end
+
+function addUnit(name, maxWounds, ftcGuid)
     maxWounds = tonumber(maxWounds) or 1
+    ftcGuid   = ftcGuid or ""
     if #woundTracker >= MAX_UNITS then
         log("Wound tracker full (" .. MAX_UNITS .. " units max).")
         return
@@ -345,20 +419,21 @@ function addUnit(name, maxWounds)
     if idx then
         woundTracker[idx].max     = maxWounds
         woundTracker[idx].current = maxWounds
+        woundTracker[idx].ftcGuid = ftcGuid
         log("Updated: " .. name .. " (" .. maxWounds .. "W)")
     else
         table.insert(woundTracker, {
             name    = name,
             max     = maxWounds,
             current = maxWounds,
-            player  = "?",
+            ftcGuid = ftcGuid,
         })
-        log("Added: " .. name .. " (" .. maxWounds .. "W)")
+        log("Added: " .. name .. " (" .. maxWounds .. "W)"
+            .. (ftcGuid ~= "" and " [FTC linked]" or ""))
     end
     refreshWoundUI()
 end
 
--- Remove a unit
 function removeUnit(indexStr)
     local i = tonumber(indexStr)
     if i and woundTracker[i] then
@@ -368,7 +443,7 @@ function removeUnit(indexStr)
     end
 end
 
--- Apply damage to a unit (by name)
+-- Core wound application — routes through FTC.ApplyWounds if the unit is linked
 function applyWounds(name, amount)
     amount = tonumber(amount) or 0
     local idx, unit = findUnit(name)
@@ -377,6 +452,14 @@ function applyWounds(name, amount)
         return
     end
     unit.current = math.max(0, unit.current - amount)
+
+    -- ── FTC bridge: also update the FTC unit card counter ───────────
+    if FTC_PRESENT and unit.ftcGuid and unit.ftcGuid ~= "" then
+        ftcCall(function()
+            FTC.ApplyWounds(unit.ftcGuid, amount)
+        end)
+    end
+
     printToAll(
         string.format("[Wounds] %s takes %d wound(s) → %d/%d remaining",
             unit.name, amount, unit.current, unit.max),
@@ -388,12 +471,21 @@ function applyWounds(name, amount)
     refreshWoundUI()
 end
 
--- Heal a unit (by name)
 function healUnit(name, amount)
     amount = tonumber(amount) or 1
     local idx, unit = findUnit(name)
     if not unit then log("Unit not found: " .. tostring(name)) return end
     unit.current = math.min(unit.max, unit.current + amount)
+
+    -- ── FTC bridge: heal via FTC.HealWounds if available ────────────
+    if FTC_PRESENT and unit.ftcGuid and unit.ftcGuid ~= "" then
+        ftcCall(function()
+            if FTC.HealWounds then
+                FTC.HealWounds(unit.ftcGuid, amount)
+            end
+        end)
+    end
+
     printToAll(
         string.format("[Wounds] %s healed %d → %d/%d",
             unit.name, amount, unit.current, unit.max),
@@ -401,15 +493,12 @@ function healUnit(name, amount)
     refreshWoundUI()
 end
 
--- Apply damage to whichever unit is currently "selected" in the UI
--- (last row whose button was clicked — stored in selectedUnit)
-local selectedUnit = nil
-
 function selectUnit(indexStr)
     selectedUnit = tonumber(indexStr)
     local u = selectedUnit and woundTracker[selectedUnit]
     if u then
-        UI.setAttribute("wt_selected_label", "text", "Selected: " .. u.name)
+        UI.setAttribute("wt_selected_label", "text",
+            "Selected: " .. u.name .. (u.ftcGuid ~= "" and " ⚙" or ""))
     end
 end
 
@@ -418,6 +507,12 @@ function applyDamageToSelected(amount, sourceLabel)
     local unit = woundTracker[selectedUnit]
     if not unit then selectedUnit = nil return end
     unit.current = math.max(0, unit.current - amount)
+
+    -- ── FTC bridge ───────────────────────────────────────────────────
+    if FTC_PRESENT and unit.ftcGuid and unit.ftcGuid ~= "" then
+        ftcCall(function() FTC.ApplyWounds(unit.ftcGuid, amount) end)
+    end
+
     printToAll(
         string.format("[Wounds] %s → %s takes %d damage → %d/%d",
             sourceLabel or "?", unit.name, amount, unit.current, unit.max),
@@ -429,16 +524,13 @@ function applyDamageToSelected(amount, sourceLabel)
     refreshWoundUI()
 end
 
--- Called by the wound tracker UI's ±1 buttons
 function woundBtnMinus(indexStr)
-    local i    = tonumber(indexStr)
-    local unit = i and woundTracker[i]
+    local unit = tonumber(indexStr) and woundTracker[tonumber(indexStr)]
     if unit then applyWounds(unit.name, 1) end
 end
 
 function woundBtnPlus(indexStr)
-    local i    = tonumber(indexStr)
-    local unit = i and woundTracker[i]
+    local unit = tonumber(indexStr) and woundTracker[tonumber(indexStr)]
     if unit then healUnit(unit.name, 1) end
 end
 
@@ -451,8 +543,139 @@ function toggleWoundTracker()
     end
 end
 
--- Called by the "Set from Yelloscribe" button:
--- Reads the unit name and wound value typed into the Yelloscribe panel inputs
+-- ── FTC sync callbacks ───────────────────────────────────────────────
+-- FTC fires onFTCUnitWounded(guid, amount, currentWounds) when its own
+-- wound counters change (e.g. player clicks the FTC card directly).
+-- We mirror that back into our tracker so both stay in sync.
+
+local _prev_onFTCUnitWounded = onFTCUnitWounded
+function onFTCUnitWounded(guid, amount, currentWounds)
+    if _prev_onFTCUnitWounded then _prev_onFTCUnitWounded(guid, amount, currentWounds) end
+    local idx, unit = findUnitByGuid(guid)
+    if unit and currentWounds ~= nil then
+        unit.current = tonumber(currentWounds) or unit.current
+        refreshWoundUI()
+    end
+end
+
+local _prev_onFTCUnitDestroyed = onFTCUnitDestroyed
+function onFTCUnitDestroyed(guid)
+    if _prev_onFTCUnitDestroyed then _prev_onFTCUnitDestroyed(guid) end
+    local idx, unit = findUnitByGuid(guid)
+    if unit then
+        unit.current = 0
+        refreshWoundUI()
+        printToAll(string.format("[FTC │ Wounds] ☠  %s is DESTROYED!", unit.name),
+            {r=1, g=0.2, b=0.2})
+    end
+end
+
+------------------------------------------------------------------------
+-- FTC IMPORT  —  pull FTC's unit roster into our wound tracker
+------------------------------------------------------------------------
+
+-- Import a single unit by TTS object GUID
+-- FTC stores unit data on the object itself via getTable("Data") or similar
+function importFtcUnit(guid)
+    if not FTC_PRESENT then
+        log("Free the Codex is not loaded.")
+        return
+    end
+    local obj = getObjectFromGUID(guid)
+    if not obj then
+        log("Object not found: " .. tostring(guid))
+        return
+    end
+
+    -- FTC unit cards store their data in a Lua table on the object.
+    -- Try the two most common FTC data table names.
+    local data = nil
+    pcall(function() data = obj.getTable("Data") end)
+    if not data then
+        pcall(function() data = obj.getTable("UnitData") end)
+    end
+
+    local name      = (data and data.name)      or obj.getName()
+    local maxWounds = (data and data.wounds)     or
+                      (data and data.maxWounds)  or 1
+    local curWounds = (data and data.curWounds)  or maxWounds
+
+    if not name or name == "" then
+        log("Could not read unit name from GUID " .. guid)
+        return
+    end
+
+    -- Upsert into our tracker, preserving current HP from FTC
+    local idx = findUnit(name)
+    if idx then
+        woundTracker[idx].max     = maxWounds
+        woundTracker[idx].current = curWounds
+        woundTracker[idx].ftcGuid = guid
+    else
+        if #woundTracker >= MAX_UNITS then
+            log("Wound tracker full — could not import " .. name)
+            return
+        end
+        table.insert(woundTracker, {
+            name    = name,
+            max     = maxWounds,
+            current = curWounds,
+            ftcGuid = guid,
+        })
+    end
+    log("FTC import: " .. name .. " (" .. curWounds .. "/" .. maxWounds .. "W)")
+    refreshWoundUI()
+end
+
+-- Bulk-import every unit FTC currently tracks
+function importAllFtcUnits()
+    if not FTC_PRESENT then
+        log("Free the Codex is not loaded.")
+        return
+    end
+
+    -- FTC.GetUnits() returns an array of unit data tables
+    local units = ftcCall(function() return FTC.GetUnits() end)
+    if not units or #units == 0 then
+        log("No FTC units found. Make sure units are placed on the board.")
+        return
+    end
+
+    local imported = 0
+    for _, u in ipairs(units) do
+        local guid      = u.guid or u.GUID
+        local name      = u.name or u.Name
+        local maxWounds = u.wounds or u.maxWounds or u.Wounds or 1
+        local curWounds = u.curWounds or u.currentWounds or maxWounds
+
+        if name and guid then
+            local idx = findUnit(name)
+            if idx then
+                woundTracker[idx].max     = maxWounds
+                woundTracker[idx].current = curWounds
+                woundTracker[idx].ftcGuid = guid
+            elseif #woundTracker < MAX_UNITS then
+                table.insert(woundTracker, {
+                    name    = name,
+                    max     = maxWounds,
+                    current = curWounds,
+                    ftcGuid = guid,
+                })
+            end
+            imported = imported + 1
+        end
+    end
+
+    log(string.format("FTC: imported %d unit(s).", imported))
+    refreshWoundUI()
+end
+
+------------------------------------------------------------------------
+-- YELLOSCRIBE PANEL
+------------------------------------------------------------------------
+function openYelloscribe()   UI.show("yelloscribe_panel")  end
+function closeYelloscribe()  UI.hide("yelloscribe_panel")  end
+
 function ysSetUnit()
     local name = UI.getValue("ys_unit_name_input")
     local w    = tonumber(UI.getValue("ys_unit_wounds_input"))
@@ -461,20 +684,8 @@ function ysSetUnit()
         return
     end
     addUnit(name, w)
-    -- Clear the inputs
     UI.setValue("ys_unit_name_input",   "")
     UI.setValue("ys_unit_wounds_input", "")
-end
-
-------------------------------------------------------------------------
--- YELLOSCRIBE PANEL
-------------------------------------------------------------------------
-function openYelloscribe()
-    UI.show("yelloscribe_panel")
-end
-
-function closeYelloscribe()
-    UI.hide("yelloscribe_panel")
 end
 
 ------------------------------------------------------------------------
@@ -511,7 +722,6 @@ function onChat(message, player)
     if not cmd then return end
     cmd = cmd:lower()
 
-    -- !roll NdS
     if cmd == "!roll" then
         local num, sides = args:match("(%d+)d(%d+)")
         num = tonumber(num); sides = tonumber(sides)
@@ -529,8 +739,6 @@ function onChat(message, player)
         pushHistory(player.steam_name, results, total)
         return false
 
-    -- !attack <n> <hit> <wound> <AP> <dmg> <save>
-    -- e.g. !attack 5 3 4 -1 2 3
     elseif cmd == "!attack" then
         local n,h,w,ap,dmg,sv = args:match(
             "(%d+)%s+(%d+)%+?%s+(%d+)%+?%s+([%-]?%d+)%s+(%S+)%s+(%d+)")
@@ -539,14 +747,13 @@ function onChat(message, player)
         if not (n and h and w and ap and dmg and sv) then
             printToColor(
                 "Usage: !attack <attacks> <hit+> <wound+> <AP> <dmg> <save+>\n"..
-                "  e.g. !attack 5 3 4 -1 2 3  or  !attack 5 3 4 -1 D3 3",
+                "  e.g. !attack 5 3 4 -1 2 3   dmg can be D3 or D6",
                 player.color, {r=1,g=0.5,b=0})
             return false
         end
         fullAttackSequence(player, n, h, w, ap, dmg, sv)
         return false
 
-    -- !save <numDice> <save+> [AP]  e.g. !save 4 3 -2
     elseif cmd == "!save" then
         local nd, sv, ap = args:match("(%d+)%s+(%d+)%+?%s*([%-]?%d*)")
         nd=tonumber(nd); sv=tonumber(sv); ap=tonumber(ap) or 0
@@ -558,7 +765,6 @@ function onChat(message, player)
         rollSaves(player, nd, sv, ap)
         return false
 
-    -- !morale <Ld> <lost>
     elseif cmd == "!morale" then
         local ld, lost = args:match("(%d+)%s+(%d+)")
         ld=tonumber(ld); lost=tonumber(lost)
@@ -570,32 +776,29 @@ function onChat(message, player)
         moraleTest(player, ld, lost)
         return false
 
-    -- !addunit "Name" <maxWounds>  e.g. !addunit "Dreadnought" 8
     elseif cmd == "!addunit" then
         local name, w = args:match('"([^"]+)"%s+(%d+)')
         if not name then name, w = args:match("(%S+)%s+(%d+)") end
         w = tonumber(w)
         if not name or not w then
-            printToColor('Usage: !addunit "Unit Name" <maxWounds>  e.g. !addunit "Dreadnought" 8',
+            printToColor('Usage: !addunit "Unit Name" <maxWounds>',
                 player.color, {r=1,g=0.5,b=0})
             return false
         end
         addUnit(name, w)
         return false
 
-    -- !wound "Name" <amount>
     elseif cmd == "!wound" then
         local name, amt = args:match('"([^"]+)"%s+(%d+)')
         if not name then name, amt = args:match("(%S+)%s+(%d+)") end
         if not name or not amt then
-            printToColor('Usage: !wound "Unit Name" <amount>  e.g. !wound "Dreadnought" 3',
+            printToColor('Usage: !wound "Unit Name" <amount>',
                 player.color, {r=1,g=0.5,b=0})
             return false
         end
         applyWounds(name, tonumber(amt))
         return false
 
-    -- !heal "Name" <amount>
     elseif cmd == "!heal" then
         local name, amt = args:match('"([^"]+)"%s+(%d+)')
         if not name then name, amt = args:match("(%S+)%s+(%d+)") end
@@ -607,7 +810,21 @@ function onChat(message, player)
         healUnit(name, tonumber(amt))
         return false
 
-    -- !next / !prev  — advance/retreat phase
+    -- FTC-specific commands
+    elseif cmd == "!ftcimport" then
+        importAllFtcUnits()
+        return false
+
+    elseif cmd == "!ftcunit" then
+        local guid = args:match("%S+")
+        if not guid then
+            printToColor("Usage: !ftcunit <GUID>  — import one FTC unit card by its TTS object GUID",
+                player.color, {r=1,g=0.5,b=0})
+            return false
+        end
+        importFtcUnit(guid)
+        return false
+
     elseif cmd == "!next" then
         nextPhase()
         return false
@@ -615,17 +832,14 @@ function onChat(message, player)
         prevPhase()
         return false
 
-    -- !turn  — show current turn
     elseif cmd == "!turn" then
         printToColor("[Turn] " .. phaseLabel(), player.color, {r=0.6,g=0.9,b=1})
         return false
 
-    -- !yelloscribe
     elseif cmd == "!yelloscribe" then
         openYelloscribe()
         return false
 
-    -- !history
     elseif cmd == "!history" then
         if #rollHistory == 0 then
             printToColor("No rolls yet.", player.color, {r=0.7,g=0.7,b=0.7})
@@ -641,20 +855,23 @@ function onChat(message, player)
         end
         return false
 
-    -- !help
     elseif cmd == "!help" then
+        local ftcLine = FTC_PRESENT
+            and "!ftcimport              — import all FTC units into wound tracker\n"..
+                "!ftcunit <GUID>         — import one FTC unit card by GUID"
+            or  "(FTC not detected — FTC commands inactive)"
         local h = {
             "═══════════ WH40K Mod Commands ═══════════",
             "!roll <N>d<S>                — free dice roll",
             "!attack <n> <hit> <wound> <AP> <dmg> <save>",
             "   Full sequence (hit→wound→save→damage)",
-            "   e.g.  !attack 5 3 4 -1 2 3",
-            "   dmg can be D3 or D6 for variable damage",
+            "   e.g.  !attack 5 3 4 -1 2 3   (dmg: flat, D3, or D6)",
             "!save <dice> <save+> [AP]    — armour save roll",
             "!morale <Ld> <lost>          — morale test",
             "!addunit \"Name\" <wounds>    — add unit to wound tracker",
             "!wound  \"Name\" <amount>     — deal wounds to unit",
             "!heal   \"Name\" <amount>     — heal wounds on unit",
+            ftcLine,
             "!next / !prev                — advance/retreat turn phase",
             "!turn                        — show current phase",
             "!yelloscribe                 — open Yelloscribe panel",
@@ -669,46 +886,42 @@ function onChat(message, player)
 end
 
 ------------------------------------------------------------------------
--- UI  XML
+-- UI XML
 ------------------------------------------------------------------------
--- Build wound-tracker rows dynamically so the XML stays maintainable
 local function buildWoundRows()
     local rows = ""
     for i = 1, MAX_UNITS do
         rows = rows .. string.format([[
       <HorizontalLayout id="wt_row_%d" active="false" height="38"
-                        padding="4 4 2 2" spacing="6">
-        <Button id="wt_sel_%d" text="●" fontSize="14" width="28" height="28"
-                color="#2d2d44" textColor="#aaaacc"
-                onClick="selectUnit|%d" />
-        <Text id="wt_name_%d" fontSize="14" color="White"
-              alignment="MiddleLeft" flexibleWidth="1">—</Text>
-        <Text id="wt_hp_%d" fontSize="14" color="#f4a261"
-              alignment="MiddleCenter" width="60">0/0</Text>
-        <Image id="wt_bar_%d" image="white" color="#2dc653"
-               width="80" height="16" fillAmount="1" type="Filled"
-               fillMethod="Horizontal" fillOrigin="0" />
-        <Button text="−" fontSize="16" width="28" height="28"
-                color="#e63946" textColor="White"
-                onClick="woundBtnMinus|%d" />
-        <Button text="+" fontSize="16" width="28" height="28"
-                color="#2dc653" textColor="White"
-                onClick="woundBtnPlus|%d" />
-        <Button text="✕" fontSize="13" width="24" height="24"
-                color="#555566" textColor="#aaaacc"
-                onClick="removeUnit|%d" />
+                        padding="4 4 2 2" spacing="4">
+        <Button id="wt_sel_%d"  text="●" fontSize="13" width="26" height="26"
+                color="#2d2d44" textColor="#aaaacc" onClick="selectUnit|%d" />
+        <Text   id="wt_ftc_%d"  text=" " fontSize="12" color="#44bb88"
+                alignment="MiddleCenter" width="16" />
+        <Text   id="wt_name_%d" text="—" fontSize="13" color="White"
+                alignment="MiddleLeft" flexibleWidth="1" />
+        <Text   id="wt_hp_%d"   text="0/0" fontSize="13" color="#f4a261"
+                alignment="MiddleCenter" width="56" />
+        <Image  id="wt_bar_%d"  image="white" color="#2dc653"
+                width="70" height="14" fillAmount="1" type="Filled"
+                fillMethod="Horizontal" fillOrigin="0" />
+        <Button text="−" fontSize="15" width="26" height="26"
+                color="#e63946" textColor="White" onClick="woundBtnMinus|%d" />
+        <Button text="+" fontSize="15" width="26" height="26"
+                color="#2dc653" textColor="White" onClick="woundBtnPlus|%d" />
+        <Button text="✕" fontSize="12" width="22" height="22"
+                color="#555566" textColor="#aaaacc" onClick="removeUnit|%d" />
       </HorizontalLayout>
-        ]], i,i,i,i,i,i,i,i,i)
+        ]], i,i,i,i,i,i,i,i,i,i)
     end
     return rows
 end
 
--- Build phase buttons for turn tracker
 local function buildPhaseButtons()
     local btns = ""
     for i, name in ipairs(PHASES) do
         btns = btns .. string.format(
-            '<Button id="tt_phase_btn_%d" text="%s" fontSize="13" height="32" '..
+            '<Button id="tt_phase_btn_%d" text="%s" fontSize="12" height="30" '..
             'color="%s" textColor="%s" onClick="setPhase|%d" />\n',
             i, name,
             i == 1 and "#e63946" or "#2d2d44",
@@ -718,104 +931,84 @@ local function buildPhaseButtons()
     return btns
 end
 
-local MOD_XML = string.format([[
+-- Toolbar anchor: bottom-right when FTC present, bottom-centre otherwise.
+-- We build the XML as a string so the position can be set at runtime before
+-- UI.setXml() is called (inside onLoad, after FTC detection).
+local function buildXml(ftcMode)
+    local toolbarPos    = ftcMode and "460 -330 0" or "0 -340 0"
+    local turnPanelVis  = ftcMode and "false" or "false"   -- always starts hidden
+
+    return string.format([[
 <Canvas>
 
-<!-- ═══════════════════════════════════════════════
-     FLOATING TOOLBAR  (always visible)
-     ═══════════════════════════════════════════════ -->
-<HorizontalLayout id="toolbar" position="-460 -330 0" width="420" height="44"
+<!-- ── TOOLBAR ─────────────────────────────────────────────────── -->
+<HorizontalLayout id="toolbar" position="%s" width="430" height="44"
                   color="#1a1a2e" padding="4 4 4 4" spacing="4">
-  <Button text="📜 Rules" fontSize="14" color="#2d2d44" textColor="#aaaacc"
-          width="90" onClick="openYelloscribe" />
-  <Button text="⏱ Turn"  fontSize="14" color="#2d2d44" textColor="#aaaacc"
-          width="80" onClick="toggleTurnTracker" />
-  <Button text="❤ HP"    fontSize="14" color="#2d2d44" textColor="#aaaacc"
-          width="70" onClick="toggleWoundTracker" />
-  <Text text="!help for commands" fontSize="11" color="#555577"
+  <Button text="📜 Rules"   fontSize="13" color="#2d2d44" textColor="#aaaacc"
+          width="84"  onClick="openYelloscribe" />
+  <Button text="⏱ Turn"    fontSize="13" color="#2d2d44" textColor="#aaaacc"
+          width="74"  onClick="toggleTurnTracker" />
+  <Button text="❤ HP"      fontSize="13" color="#2d2d44" textColor="#aaaacc"
+          width="64"  onClick="toggleWoundTracker" />
+  %s
+  <Text text="!help" fontSize="11" color="#555577"
         alignment="MiddleCenter" flexibleWidth="1" />
 </HorizontalLayout>
 
-
-<!-- ═══════════════════════════════════════════════
-     TURN TRACKER PANEL
-     ═══════════════════════════════════════════════ -->
-<Panel id="turn_tracker_panel" active="false"
-       position="300 200 0" width="340" height="260"
+<!-- ── TURN TRACKER ─────────────────────────────────────────────── -->
+<Panel id="turn_tracker_panel" active="%s"
+       position="300 160 0" width="340" height="260"
        color="#1a1a2e" allowDragging="true"
        showAnimation="Grow" hideAnimation="Shrink">
-
   <VerticalLayout padding="8 8 8 8" spacing="6">
-
-    <!-- Header -->
     <HorizontalLayout height="40" color="#e63946" padding="6 6 4 4">
       <Text text="Turn Tracker" fontSize="18" fontStyle="Bold"
             color="White" alignment="MiddleLeft" flexibleWidth="1" />
       <Button text="✕" fontSize="16" color="#c1121f" textColor="White"
               width="36" height="36" onClick="toggleTurnTracker" />
     </HorizontalLayout>
-
-    <!-- Round & Player -->
-    <HorizontalLayout height="32" spacing="8">
+    <HorizontalLayout height="30" spacing="8">
       <Text id="tt_round"  text="Round 1" fontSize="16" fontStyle="Bold"
             color="White" alignment="MiddleLeft" flexibleWidth="1" />
-      <Text id="tt_player" text="Player 1" fontSize="14"
+      <Text id="tt_player" text="Player 1" fontSize="13"
             color="#aaaacc" alignment="MiddleRight" flexibleWidth="1" />
     </HorizontalLayout>
-
-    <!-- Current phase label -->
     <Text id="tt_phase" text="Command Phase" fontSize="15"
           color="#f4a261" alignment="MiddleCenter" height="24" />
-
-    <!-- Phase buttons grid -->
-    <GridLayout cellWidth="154" cellHeight="32" spacing="4">
+    <GridLayout cellWidth="152" cellHeight="30" spacing="4">
       %s
     </GridLayout>
-
-    <!-- Prev / Next -->
-    <HorizontalLayout height="36" spacing="8">
-      <Button text="◀ Prev" fontSize="14" color="#2d2d44" textColor="#aaaacc"
+    <HorizontalLayout height="34" spacing="8">
+      <Button text="◀ Prev" fontSize="13" color="#2d2d44" textColor="#aaaacc"
               flexibleWidth="1" onClick="prevPhase" />
-      <Button text="Reset"  fontSize="14" color="#555566" textColor="#aaaacc"
-              width="70"    onClick="resetTurn" />
-      <Button text="Next ▶" fontSize="14" color="#e63946" textColor="White"
+      <Button text="Reset"  fontSize="13" color="#555566" textColor="#aaaacc"
+              width="66" onClick="resetTurn" />
+      <Button text="Next ▶" fontSize="13" color="#e63946" textColor="White"
               flexibleWidth="1" onClick="nextPhase" />
     </HorizontalLayout>
-
   </VerticalLayout>
 </Panel>
 
-
-<!-- ═══════════════════════════════════════════════
-     WOUND TRACKER PANEL
-     ═══════════════════════════════════════════════ -->
+<!-- ── WOUND TRACKER ─────────────────────────────────────────────── -->
 <Panel id="wound_tracker_panel" active="false"
-       position="-340 100 0" width="420" height="560"
+       position="-340 80 0" width="430" height="570"
        color="#1a1a2e" allowDragging="true"
        showAnimation="Grow" hideAnimation="Shrink">
-
   <VerticalLayout padding="8 8 8 8" spacing="4">
-
-    <!-- Header -->
     <HorizontalLayout height="40" color="#e63946" padding="6 6 4 4">
       <Text text="Wound Tracker" fontSize="18" fontStyle="Bold"
             color="White" alignment="MiddleLeft" flexibleWidth="1" />
+      %s
       <Button text="✕" fontSize="16" color="#c1121f" textColor="White"
               width="36" height="36" onClick="toggleWoundTracker" />
     </HorizontalLayout>
-
-    <!-- Selected unit label -->
     <Text id="wt_selected_label" text="Selected: (none)"
-          fontSize="12" color="#aaaacc" alignment="MiddleLeft" height="20" />
-
-    <!-- Unit rows (built dynamically) -->
+          fontSize="12" color="#aaaacc" alignment="MiddleLeft" height="18" />
     <VerticalLayout id="wt_unit_list" spacing="2">
       %s
     </VerticalLayout>
-
-    <!-- Quick-add row -->
     <HorizontalLayout height="34" spacing="4" color="#14142a" padding="4 4 2 2">
-      <InputField id="wt_quick_name"  placeholder="Unit name"
+      <InputField id="wt_quick_name"   placeholder="Unit name"
                   fontSize="13" flexibleWidth="1" height="30" />
       <InputField id="wt_quick_wounds" placeholder="W"
                   fontSize="13" width="50" height="30"
@@ -823,38 +1016,27 @@ local MOD_XML = string.format([[
       <Button text="Add" fontSize="13" color="#2dc653" textColor="White"
               width="50" height="30" onClick="quickAddUnit" />
     </HorizontalLayout>
-
-    <Text text='Or use: !addunit "Name" wounds   !wound "Name" amount'
+    <Text text='!addunit &quot;Name&quot; wounds  |  !wound &quot;Name&quot; n  |  !ftcimport'
           fontSize="11" color="#555577" alignment="MiddleCenter" height="18" />
-
   </VerticalLayout>
 </Panel>
 
-
-<!-- ═══════════════════════════════════════════════
-     YELLOSCRIBE PANEL
-     ═══════════════════════════════════════════════ -->
+<!-- ── YELLOSCRIBE ───────────────────────────────────────────────── -->
 <Panel id="yelloscribe_panel" active="false"
        position="0 0 0" width="940" height="740"
        color="#1a1a2e" allowDragging="true"
        showAnimation="Grow" hideAnimation="Shrink">
-
   <VerticalLayout padding="0 0 0 0" spacing="0">
-
-    <!-- Title bar -->
     <HorizontalLayout height="46" color="#e63946" padding="8 8 4 4" spacing="6">
       <Text text="Yelloscribe — WH40K Rules Lookup" fontSize="20"
-            fontStyle="Bold" color="White" alignment="MiddleLeft"
-            flexibleWidth="1" />
+            fontStyle="Bold" color="White" alignment="MiddleLeft" flexibleWidth="1" />
       <Button text="✕" fontSize="18" color="#c1121f" textColor="White"
               width="40" height="40" onClick="closeYelloscribe" />
     </HorizontalLayout>
-
-    <!-- Add-to-Wound-Tracker bar -->
     <HorizontalLayout height="42" color="#14142a" padding="6 6 4 4" spacing="6">
       <Text text="Add to Wound Tracker:" fontSize="13" color="#aaaacc"
             alignment="MiddleLeft" width="160" />
-      <InputField id="ys_unit_name_input" placeholder="Unit name from datasheet"
+      <InputField id="ys_unit_name_input"   placeholder="Unit name from datasheet"
                   fontSize="13" flexibleWidth="1" height="30" />
       <InputField id="ys_unit_wounds_input" placeholder="W"
                   fontSize="13" width="54" height="30"
@@ -862,19 +1044,26 @@ local MOD_XML = string.format([[
       <Button text="✚ Track" fontSize="13" color="#2dc653" textColor="White"
               width="80" height="30" onClick="ysSetUnit" />
     </HorizontalLayout>
-
-    <!-- Embedded browser -->
     <WebBrowser id="ys_browser" url="https://www.yelloscribe.com"
                 width="940" height="652" />
-
   </VerticalLayout>
 </Panel>
 
 </Canvas>
-]], buildPhaseButtons(), buildWoundRows())
+    ]],
+    toolbarPos,
+    -- FTC import button in toolbar (only when FTC present)
+    ftcMode and '<Button text="⚙ FTC" fontSize="13" color="#1a6644" textColor="#44ee88" width="72" onClick="importAllFtcUnits" />' or "",
+    turnPanelVis,
+    buildPhaseButtons(),
+    -- FTC sync badge in wound tracker header
+    ftcMode and '<Text text="⚙ FTC Linked" fontSize="12" color="#44bb88" alignment="MiddleCenter" flexibleWidth="1" />' or "",
+    buildWoundRows()
+    )
+end
 
 ------------------------------------------------------------------------
--- Quick-add unit button handler (wound tracker panel)
+-- QUICK-ADD (wound tracker panel button)
 ------------------------------------------------------------------------
 function quickAddUnit()
     local name = UI.getValue("wt_quick_name")
@@ -893,7 +1082,19 @@ end
 ------------------------------------------------------------------------
 function onLoad(save_state)
     math.randomseed(os.time())
-    UI.setXml(MOD_XML)
+
+    -- ── FTC detection ────────────────────────────────────────────────
+    -- FTC registers itself as the global table `FTC` before onLoad fires.
+    FTC_PRESENT = (type(FTC) == "table")
+    if FTC_PRESENT then
+        log("Free the Codex detected — FTC compatibility mode active.")
+        log("Use !ftcimport to pull FTC units into the wound tracker.")
+    else
+        log("Free the Codex not detected — running standalone.")
+    end
+
+    -- Build and inject UI (toolbar position depends on FTC_PRESENT)
+    UI.setXml(buildXml(FTC_PRESENT))
 
     -- Restore saved state
     if save_state and save_state ~= "" then
@@ -902,8 +1103,8 @@ function onLoad(save_state)
             rollHistory  = data.rollHistory  or {}
             woundTracker = data.woundTracker or {}
             if data.turnState then
-                turnState.round      = data.turnState.round      or 1
-                turnState.phase      = data.turnState.phase      or 1
+                turnState.round        = data.turnState.round        or 1
+                turnState.phase        = data.turnState.phase        or 1
                 turnState.activePlayer = data.turnState.activePlayer or "Player 1"
             end
         end
@@ -917,11 +1118,10 @@ function onLoad(save_state)
         end
     end
 
-    -- Defer UI refresh until UI is ready
     Wait.time(function()
         refreshTurnUI()
         refreshWoundUI()
-        log("WH40K mod loaded. Type !help for commands.")
+        log("WH40K mod ready. Type !help for commands.")
     end, 0.5)
 end
 

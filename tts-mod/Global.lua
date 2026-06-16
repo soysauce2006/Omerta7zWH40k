@@ -79,6 +79,43 @@ local selectedUnit = nil
 local pendingUnit  = nil  -- kept for API compat
 
 ------------------------------------------------------------------------
+-- TEAM / MATCH CONFIG
+------------------------------------------------------------------------
+-- All structured modes use exactly 2 teams.
+-- FFA gives every seated player their own 1-player "army".
+--
+-- teamConfig.teams[i] = { name, color, players }
+--   name    — display name shown in turn tracker
+--   color   — hex colour for the team badge
+--   players — list of TTS player colour strings ("Red", "White", …)
+--
+-- teamConfig.activeTeam — index of the team currently taking their turn.
+-- Advances when a full set of 6 phases completes.
+
+local TEAM_MODES = { "ffa", "2v1", "2v2", "3v2", "3v3" }
+
+local TEAM_DEFAULTS = {
+    { name = "Team Alpha", color = "#e63946" },  -- red
+    { name = "Team Bravo", color = "#2dc653" },  -- green
+}
+
+-- Sizes for each mode: { teamA_size, teamB_size }
+local MODE_SIZES = {
+    ["ffa"] = nil,        -- computed from seated player count
+    ["2v1"] = {2, 1},
+    ["2v1r"]= {1, 2},     -- internal alias (1 vs 2)
+    ["2v2"] = {2, 2},
+    ["3v2"] = {3, 2},
+    ["3v3"] = {3, 3},
+}
+
+local teamConfig = {
+    mode       = "ffa",
+    activeTeam = 1,
+    teams      = {},
+}
+
+------------------------------------------------------------------------
 -- UTILITY
 ------------------------------------------------------------------------
 local function log(msg)
@@ -252,18 +289,32 @@ end
 ------------------------------------------------------------------------
 -- TURN TRACKER
 ------------------------------------------------------------------------
+-- Returns a short "Army" label for the currently active team
+local function activeArmyLabel()
+    local t = teamConfig.teams[teamConfig.activeTeam]
+    if not t then return "—" end
+    if #t.players == 0 then return t.name end
+    return t.name .. " (" .. table.concat(t.players, "+") .. ")"
+end
+
 local function phaseLabel()
-    return string.format("Round %d — %s  [%s]",
-        turnState.round, PHASES[turnState.phase], turnState.activePlayer)
+    local teamStr = (#teamConfig.teams > 0)
+        and ("  ▸ " .. activeArmyLabel())
+        or  ("  [" .. turnState.activePlayer .. "]")
+    return string.format("Round %d — %s%s",
+        turnState.round, PHASES[turnState.phase], teamStr)
 end
 
 local function refreshTurnUI()
-    -- When FTC is present our turn panel is hidden, so skip attribute writes
-    -- to avoid harmless-but-noisy "element not found" errors from TTS.
     if FTC_PRESENT then return end
+    local t = teamConfig.teams[teamConfig.activeTeam]
     UI.setAttribute("tt_round",  "text", "Round " .. turnState.round)
     UI.setAttribute("tt_phase",  "text", PHASES[turnState.phase])
-    UI.setAttribute("tt_player", "text", turnState.activePlayer)
+    UI.setAttribute("tt_player", "text", t and t.name or turnState.activePlayer)
+    -- Colour the army label badge with the active team colour
+    local teamCol = t and t.color or "#aaaacc"
+    UI.setAttribute("tt_team_label", "text",  t and activeArmyLabel() or "No teams configured")
+    UI.setAttribute("tt_team_label", "color", teamCol)
     for i = 1, #PHASES do
         local active = (i == turnState.phase)
         UI.setAttribute("tt_phase_btn_" .. i, "color",
@@ -272,6 +323,27 @@ local function refreshTurnUI()
             active and "White" or "#aaaacc")
     end
     printToAll("[Turn] " .. phaseLabel(), {r=0.6, g=0.9, b=1})
+end
+
+-- Advance to the next army's turn; wraps → new round when all armies done
+local function advanceArmy()
+    local n = #teamConfig.teams
+    if n < 2 then
+        turnState.round = turnState.round + 1
+        printToAll("=== Round " .. turnState.round .. " begins! ===",
+            {r=1, g=0.85, b=0.1})
+        return
+    end
+    teamConfig.activeTeam = (teamConfig.activeTeam % n) + 1
+    if teamConfig.activeTeam == 1 then
+        turnState.round = turnState.round + 1
+        printToAll("=== Round " .. turnState.round .. " begins! ===",
+            {r=1, g=0.85, b=0.1})
+    else
+        local t = teamConfig.teams[teamConfig.activeTeam]
+        printToAll("=== " .. (t and t.name or "Next army") .. "'s turn! ===",
+            {r=0.6, g=0.9, b=1})
+    end
 end
 
 function nextPhase()
@@ -283,18 +355,31 @@ function nextPhase()
         turnState.phase = turnState.phase + 1
     else
         turnState.phase = 1
-        turnState.round = turnState.round + 1
-        log("=== Round " .. turnState.round .. " begins! ===")
+        advanceArmy()
     end
     refreshTurnUI()
+    -- Sync active-player with the first player of the now-active team (for FTC compat)
+    local t = teamConfig.teams[teamConfig.activeTeam]
+    if t and t.players[1] then
+        turnState.activePlayer = t.players[1]
+    end
 end
 
 function prevPhase()
     if FTC_PRESENT then return end
     if turnState.phase > 1 then
         turnState.phase = turnState.phase - 1
-    elseif turnState.round > 1 then
-        turnState.round = turnState.round - 1
+    else
+        -- Step back one army
+        local n = #teamConfig.teams
+        if n > 1 then
+            teamConfig.activeTeam = ((teamConfig.activeTeam - 2) % n) + 1
+            if teamConfig.activeTeam == n then
+                turnState.round = math.max(1, turnState.round - 1)
+            end
+        elseif turnState.round > 1 then
+            turnState.round = turnState.round - 1
+        end
         turnState.phase = #PHASES
     end
     refreshTurnUI()
@@ -311,8 +396,10 @@ end
 
 function resetTurn()
     if FTC_PRESENT then return end
-    turnState.round = 1; turnState.phase = 1
+    turnState.round = 1
+    turnState.phase = 1
     turnState.activePlayer = "Player 1"
+    teamConfig.activeTeam  = 1
     refreshTurnUI()
     log("Turn tracker reset.")
 end
@@ -364,6 +451,224 @@ function onFTCTurnStart(playerColor)
     if _prev_onFTCTurnStart then _prev_onFTCTurnStart(playerColor) end
     turnState.activePlayer = playerColor or turnState.activePlayer
     log("FTC: " .. tostring(playerColor) .. "'s turn.")
+end
+
+------------------------------------------------------------------------
+-- TEAMS & MATCH FORMAT
+------------------------------------------------------------------------
+
+-- Returns a flat list of player colour strings for all seated players.
+local function seatedColors()
+    local list = {}
+    for _, p in ipairs(Player.getPlayers()) do
+        if p.seated then list[#list+1] = p.color end
+    end
+    return list
+end
+
+-- Refresh the Teams panel display (mode buttons, player lists, active label)
+local function refreshTeamUI()
+    -- Mode buttons: highlight the active mode
+    for _, m in ipairs(TEAM_MODES) do
+        local active = (m == teamConfig.mode)
+        UI.setAttribute("tm_btn_" .. m, "color",
+            active and "#e63946" or "#2d2d44")
+        UI.setAttribute("tm_btn_" .. m, "textColor",
+            active and "White" or "#aaaacc")
+    end
+
+    -- Team columns (only shown for non-FFA modes)
+    local showTeams = (teamConfig.mode ~= "ffa")
+    UI.setAttribute("tm_team_columns", "active", showTeams and "true" or "false")
+    UI.setAttribute("tm_ffa_info",     "active", showTeams and "false" or "true")
+
+    -- Team 1 / Team 2 player lists
+    for ti = 1, 2 do
+        local t = teamConfig.teams[ti]
+        if t then
+            local pStr = #t.players > 0
+                and table.concat(t.players, ", ")
+                or  "(none)"
+            UI.setAttribute("tm_t" .. ti .. "_name",    "text", t.name)
+            UI.setAttribute("tm_t" .. ti .. "_players", "text", pStr)
+            UI.setAttribute("tm_t" .. ti .. "_name",    "color", t.color)
+        end
+    end
+
+    -- FFA list
+    if teamConfig.mode == "ffa" then
+        local lines = {}
+        for i, t in ipairs(teamConfig.teams) do
+            local marker = (i == teamConfig.activeTeam) and "▶ " or "  "
+            lines[#lines+1] = marker .. t.name ..
+                (#t.players > 0 and " — " .. t.players[1] or "")
+        end
+        UI.setAttribute("tm_ffa_list", "text",
+            #lines > 0 and table.concat(lines, "\n") or "(no players seated)")
+    end
+
+    -- Active army badge
+    local t = teamConfig.teams[teamConfig.activeTeam]
+    local lblCol = t and t.color or "#aaaacc"
+    UI.setAttribute("tm_active_label", "text",  activeArmyLabel())
+    UI.setAttribute("tm_active_label", "color", lblCol)
+
+    -- Status line
+    local n = #teamConfig.teams
+    UI.setAttribute("tm_status", "text",
+        string.format("Mode: %s  •  %d arm%s configured",
+            teamConfig.mode:upper(), n, n == 1 and "y" or "ies"))
+end
+
+-- Build (or rebuild) teams from seated players for the given mode
+function setTeamMode(modeStr)
+    modeStr = modeStr and modeStr:lower() or "ffa"
+    -- Normalise: accept "1v2" as "2v1"
+    if modeStr == "1v2" then modeStr = "2v1" end
+
+    -- Validate
+    local valid = false
+    for _, m in ipairs(TEAM_MODES) do
+        if m == modeStr then valid = true break end
+    end
+    if not valid then
+        log("Unknown mode '" .. modeStr .. "'. Valid: ffa 2v1 2v2 3v2 3v3")
+        return
+    end
+
+    teamConfig.mode       = modeStr
+    teamConfig.activeTeam = 1
+    teamConfig.teams      = {}
+
+    local colors = seatedColors()
+
+    if modeStr == "ffa" then
+        -- One army per seated player
+        local ffaCols = { "#e63946","#2dc653","#f4a261",
+                          "#7ab8f5","#cc99ff","#aaffaa",
+                          "#ffcc44","#ff88bb" }
+        for i, c in ipairs(colors) do
+            teamConfig.teams[#teamConfig.teams+1] = {
+                name    = c .. "'s Army",
+                color   = ffaCols[i] or "#aaaacc",
+                players = { c },
+            }
+        end
+        if #teamConfig.teams == 0 then
+            -- No one seated yet — placeholder so UI doesn't crash
+            teamConfig.teams = { { name="Army 1", color="#aaaacc", players={} } }
+        end
+    else
+        -- 2-team mode: split players by mode sizes
+        local sizes = MODE_SIZES[modeStr] or {2, 2}
+        for ti, def in ipairs(TEAM_DEFAULTS) do
+            teamConfig.teams[ti] = {
+                name    = def.name,
+                color   = def.color,
+                players = {},
+            }
+        end
+        local cursor = 1
+        for ti, sz in ipairs(sizes) do
+            for _ = 1, sz do
+                if colors[cursor] then
+                    teamConfig.teams[ti].players[#teamConfig.teams[ti].players+1]
+                        = colors[cursor]
+                    cursor = cursor + 1
+                end
+            end
+        end
+    end
+
+    log(string.format("Match format set to %s  (%d arm%s).",
+        modeStr:upper(), #teamConfig.teams,
+        #teamConfig.teams == 1 and "y" or "ies"))
+    refreshTeamUI()
+    refreshTurnUI()
+end
+
+-- Auto-assign seated players into the current mode (re-runs distribution)
+function autoAssignTeams()
+    setTeamMode(teamConfig.mode)
+    log("Auto-assigned seated players → " .. teamConfig.mode:upper())
+end
+
+-- Move a player (by their TTS colour) to the given team index (1 or 2)
+function assignToTeam(teamIndexStr)
+    local teamIndex = tonumber(teamIndexStr)
+    local color     = UI.getValue("tm_assign_color_input")
+    if not teamIndex or not color or color == "" then
+        log('Enter a player colour in the Teams panel first  (e.g. "Red").')
+        return
+    end
+    -- Remove from wherever they currently are
+    for _, t in ipairs(teamConfig.teams) do
+        for j, p in ipairs(t.players) do
+            if p:lower() == color:lower() then
+                table.remove(t.players, j)
+                break
+            end
+        end
+    end
+    -- Add to the target team (in 2-team modes, clamp to 1 or 2)
+    local t = teamConfig.teams[teamIndex]
+    if t then
+        t.players[#t.players+1] = color
+        UI.setValue("tm_assign_color_input", "")
+        log(color .. " → " .. t.name)
+        refreshTeamUI()
+        refreshTurnUI()
+    else
+        log("Team " .. teamIndex .. " doesn't exist. Run !setmode first.")
+    end
+end
+
+-- Rename a team (1 or 2) using the text field in the panel
+function renameTeam(teamIndexStr)
+    local ti   = tonumber(teamIndexStr)
+    local name = UI.getValue("tm_t" .. (ti or 0) .. "_name_input")
+    local t    = ti and teamConfig.teams[ti]
+    if not t or not name or name == "" then
+        log("Enter a new name in the rename field first.")
+        return
+    end
+    t.name = name
+    UI.setValue("tm_t" .. ti .. "_name_input", "")
+    log("Team " .. ti .. " renamed to: " .. name)
+    refreshTeamUI()
+    refreshTurnUI()
+end
+
+-- Manually step the active army forward / backward without advancing phase
+function nextArmy()
+    local n = #teamConfig.teams
+    if n < 2 then log("Only one army configured.") return end
+    teamConfig.activeTeam = (teamConfig.activeTeam % n) + 1
+    local t = teamConfig.teams[teamConfig.activeTeam]
+    printToAll("▶ Active army: " .. (t and t.name or "?"),
+        t and {r=0.6,g=0.9,b=1} or {r=1,g=1,b=1})
+    refreshTeamUI()
+    refreshTurnUI()
+end
+
+function prevArmy()
+    local n = #teamConfig.teams
+    if n < 2 then log("Only one army configured.") return end
+    teamConfig.activeTeam = ((teamConfig.activeTeam - 2) % n) + 1
+    local t = teamConfig.teams[teamConfig.activeTeam]
+    printToAll("◀ Active army: " .. (t and t.name or "?"),
+        t and {r=0.6,g=0.9,b=1} or {r=1,g=1,b=1})
+    refreshTeamUI()
+    refreshTurnUI()
+end
+
+function toggleTeamsPanel()
+    local vis = UI.getAttribute("teams_panel", "active")
+    if vis == "true" or vis == true then
+        UI.hide("teams_panel")
+    else
+        UI.show("teams_panel")
+    end
 end
 
 ------------------------------------------------------------------------
@@ -1011,6 +1316,35 @@ function onChat(message, player)
         end
         return false
 
+    elseif cmd == "!teams" then
+        local n = #teamConfig.teams
+        printToColor(
+            string.format("[Teams] Mode: %s  •  %d arm%s  •  Active: %s",
+                teamConfig.mode:upper(), n, n==1 and "y" or "ies",
+                activeArmyLabel()),
+            player.color, {r=0.6,g=0.9,b=1})
+        for i, t in ipairs(teamConfig.teams) do
+            local marker = (i == teamConfig.activeTeam) and "▶ " or "  "
+            printToColor(
+                string.format("  %s%d. %s — players: %s",
+                    marker, i, t.name,
+                    #t.players > 0 and table.concat(t.players, ", ") or "(none)"),
+                player.color, {r=0.9,g=0.9,b=0.9})
+        end
+        return false
+
+    elseif cmd == "!setmode" then
+        local mode = args:match("%S+")
+        if not mode then
+            printToColor(
+                "Usage: !setmode <mode>  —  modes: ffa  2v1  2v2  3v2  3v3\n"..
+                "Auto-assigns seated players.  Use Teams panel to reassign.",
+                player.color, {r=1,g=0.5,b=0})
+            return false
+        end
+        setTeamMode(mode)
+        return false
+
     elseif cmd == "!help" then
         local ftcLine = FTC_PRESENT
             and "!ftcimport              — import all FTC units into wound tracker\n"..
@@ -1028,7 +1362,9 @@ function onChat(message, player)
             "!wound  \"Name\" <amount>     — deal wounds to unit",
             "!heal   \"Name\" <amount>     — heal wounds on unit",
             ftcLine,
-            "!next / !prev                — advance/retreat turn phase",
+            "!setmode <mode>              — set match format: ffa 2v1 2v2 3v2 3v3",
+            "!teams                       — show current team setup",
+            "!next / !prev                — advance/retreat turn phase (cycles armies)",
             "!turn                        — show current phase",
             "!yelloscribe                 — open Yelloscribe panel",
             "!history                     — last 10 rolls",
@@ -1300,6 +1636,10 @@ local function buildXml(ftcMode)
   <Button text="❤ HP"     fontSize="12" color="#1e2a3a" textColor="#ff7777"
           width="56" onClick="toggleWoundTracker" />
 
+  <!-- Teams -->
+  <Button text="👥 Teams"  fontSize="12" color="#1e2a3a" textColor="#ccaaff"
+          width="68" onClick="toggleTeamsPanel" />
+
   <!-- Yelloscribe -->
   <Button text="📜 Rules"  fontSize="12" color="#1e2a3a" textColor="#aaaacc"
           width="68" onClick="openYelloscribe" />
@@ -1499,6 +1839,11 @@ local function buildXml(ftcMode)
     </HorizontalLayout>
     <Text id="tt_phase" text="Command Phase" fontSize="14"
           color="#f4a261" alignment="MiddleCenter" height="22" />
+
+    <!-- Active army label — colour-coded to the team -->
+    <Text id="tt_team_label" text="No teams configured" fontSize="12"
+          color="#aaaacc" alignment="MiddleCenter" height="18" />
+
     <GridLayout cellWidth="148" cellHeight="28" spacing="4">
       %s
     </GridLayout>
@@ -1510,6 +1855,137 @@ local function buildXml(ftcMode)
       <Button text="Next ▶" fontSize="12" color="#e63946" textColor="White"
               flexibleWidth="1" onClick="nextPhase" />
     </HorizontalLayout>
+    <!-- Army nav row -->
+    <HorizontalLayout height="28" spacing="4">
+      <Button text="◀ Army" fontSize="11" color="#2d2d44" textColor="#ccaaff"
+              flexibleWidth="1" onClick="prevArmy" />
+      <Button text="Army ▶" fontSize="11" color="#2d2d44" textColor="#ccaaff"
+              flexibleWidth="1" onClick="nextArmy" />
+    </HorizontalLayout>
+  </VerticalLayout>
+</Panel>
+
+
+<!-- ══════════════════════════════════════════════════════════════════
+     TEAMS & MATCH FORMAT PANEL
+     ══════════════════════════════════════════════════════════════════ -->
+<Panel id="teams_panel" active="false"
+       position="-310 200 0" width="430" height="440"
+       color="#12121e" allowDragging="true"
+       showAnimation="Grow" hideAnimation="Shrink">
+  <VerticalLayout padding="8 8 8 8" spacing="6">
+
+    <!-- Header -->
+    <HorizontalLayout height="38" color="#2a1a44" padding="6 6 4 4">
+      <Text text="👥 Teams &amp; Match Format" fontSize="15" fontStyle="Bold"
+            color="#ccaaff" alignment="MiddleLeft" flexibleWidth="1" />
+      <Button text="✕" fontSize="14" color="#1a1a2e" textColor="#aaaacc"
+              width="32" height="32" onClick="toggleTeamsPanel" />
+    </HorizontalLayout>
+
+    <!-- Mode selector -->
+    <HorizontalLayout height="34" spacing="3">
+      <Text text="Mode:" fontSize="13" color="#aaaacc"
+            alignment="MiddleLeft" width="46" />
+      <Button id="tm_btn_ffa" text="FFA"  fontSize="13"
+              color="#2d2d44" textColor="#aaaacc" flexibleWidth="1"
+              onClick="setTeamMode|ffa" />
+      <Button id="tm_btn_2v1" text="2v1"  fontSize="13"
+              color="#2d2d44" textColor="#aaaacc" flexibleWidth="1"
+              onClick="setTeamMode|2v1" />
+      <Button id="tm_btn_2v2" text="2v2"  fontSize="13"
+              color="#2d2d44" textColor="#aaaacc" flexibleWidth="1"
+              onClick="setTeamMode|2v2" />
+      <Button id="tm_btn_3v2" text="3v2"  fontSize="13"
+              color="#2d2d44" textColor="#aaaacc" flexibleWidth="1"
+              onClick="setTeamMode|3v2" />
+      <Button id="tm_btn_3v3" text="3v3"  fontSize="13"
+              color="#2d2d44" textColor="#aaaacc" flexibleWidth="1"
+              onClick="setTeamMode|3v3" />
+    </HorizontalLayout>
+
+    <!-- Auto-assign -->
+    <Button text="⟳  Auto-assign seated players to teams"
+            fontSize="13" color="#1e1e3a" textColor="#ccaaff" height="32"
+            onClick="autoAssignTeams" />
+
+    <!-- Status line -->
+    <Text id="tm_status" text="Mode: FFA  •  0 armies configured"
+          fontSize="11" color="#555577" alignment="MiddleCenter" height="16" />
+
+    <!-- ─── TWO-TEAM COLUMNS (hidden in FFA) ─── -->
+    <HorizontalLayout id="tm_team_columns" active="false"
+                      spacing="6" flexibleHeight="1">
+
+      <!-- Team 1 column -->
+      <VerticalLayout flexibleWidth="1" spacing="4" color="#1a0505"
+                      padding="6 6 4 4">
+        <Text id="tm_t1_name" text="Team Alpha" fontSize="14"
+              fontStyle="Bold" color="#e63946" alignment="MiddleCenter"
+              height="22" />
+        <Text text="Players:" fontSize="11" color="#888899"
+              alignment="MiddleCenter" height="14" />
+        <Text id="tm_t1_players" text="(none)" fontSize="13"
+              color="#ffaaaa" alignment="MiddleCenter" flexibleHeight="1" />
+        <!-- Rename -->
+        <InputField id="tm_t1_name_input" placeholder="Rename Team 1…"
+                    fontSize="12" height="26" />
+        <Button text="✎ Rename" fontSize="12" color="#2d2d44" textColor="#aaaacc"
+                height="26" onClick="renameTeam|1" />
+      </VerticalLayout>
+
+      <Text text="VS" fontSize="16" fontStyle="Bold" color="#555566"
+            alignment="MiddleCenter" width="28" />
+
+      <!-- Team 2 column -->
+      <VerticalLayout flexibleWidth="1" spacing="4" color="#021a0a"
+                      padding="6 6 4 4">
+        <Text id="tm_t2_name" text="Team Bravo" fontSize="14"
+              fontStyle="Bold" color="#2dc653" alignment="MiddleCenter"
+              height="22" />
+        <Text text="Players:" fontSize="11" color="#888899"
+              alignment="MiddleCenter" height="14" />
+        <Text id="tm_t2_players" text="(none)" fontSize="13"
+              color="#aaffaa" alignment="MiddleCenter" flexibleHeight="1" />
+        <!-- Rename -->
+        <InputField id="tm_t2_name_input" placeholder="Rename Team 2…"
+                    fontSize="12" height="26" />
+        <Button text="✎ Rename" fontSize="12" color="#2d2d44" textColor="#aaaacc"
+                height="26" onClick="renameTeam|2" />
+      </VerticalLayout>
+    </HorizontalLayout>
+
+    <!-- ─── FFA ARMY LIST (shown in FFA mode) ─── -->
+    <VerticalLayout id="tm_ffa_info" active="false" spacing="2">
+      <Text text="Free-For-All — each player commands their own army"
+            fontSize="11" color="#888899" alignment="MiddleCenter" height="16" />
+      <Text id="tm_ffa_list" text="(no players seated)"
+            fontSize="12" color="#ccaaff" alignment="MiddleLeft"
+            flexibleHeight="1" />
+    </VerticalLayout>
+
+    <!-- ─── Player assign row ─── -->
+    <HorizontalLayout height="30" spacing="4" color="#0a0a1a" padding="4 4 2 2">
+      <Text text="Move player:" fontSize="12" color="#aaaacc"
+            alignment="MiddleLeft" width="90" />
+      <InputField id="tm_assign_color_input" placeholder="e.g. Red"
+                  fontSize="13" flexibleWidth="1" height="26" />
+      <Button text="→ T1" fontSize="12" color="#5a1010" textColor="#ffaaaa"
+              width="48" height="26" onClick="assignToTeam|1" />
+      <Button text="→ T2" fontSize="12" color="#0a3a15" textColor="#aaffaa"
+              width="48" height="26" onClick="assignToTeam|2" />
+    </HorizontalLayout>
+
+    <!-- ─── Active army row ─── -->
+    <HorizontalLayout height="32" spacing="4">
+      <Button text="◀" fontSize="14" color="#2d2d44" textColor="#ccaaff"
+              width="36" onClick="prevArmy" />
+      <Text id="tm_active_label" text="—" fontSize="13"
+            color="#ccaaff" alignment="MiddleCenter" flexibleWidth="1" />
+      <Button text="▶" fontSize="14" color="#2d2d44" textColor="#ccaaff"
+              width="36" onClick="nextArmy" />
+    </HorizontalLayout>
+
   </VerticalLayout>
 </Panel>
 
@@ -1667,6 +2143,11 @@ function onLoad(save_state)
                 turnState.phase        = data.turnState.phase        or 1
                 turnState.activePlayer = data.turnState.activePlayer or "Player 1"
             end
+            if data.teamConfig then
+                teamConfig.mode       = data.teamConfig.mode       or "ffa"
+                teamConfig.activeTeam = data.teamConfig.activeTeam or 1
+                teamConfig.teams      = data.teamConfig.teams      or {}
+            end
         end
     end
 
@@ -1681,6 +2162,7 @@ function onLoad(save_state)
     Wait.time(function()
         refreshTurnUI()
         refreshWoundUI()
+        refreshTeamUI()
         log("WH40K mod ready. Type !help for commands.")
     end, 0.5)
 end
@@ -1690,5 +2172,6 @@ function onSave()
         rollHistory  = rollHistory,
         woundTracker = woundTracker,
         turnState    = turnState,
+        teamConfig   = teamConfig,
     })
 end

@@ -886,6 +886,135 @@ function onChat(message, player)
 end
 
 ------------------------------------------------------------------------
+-- FUNCTION PANEL TOGGLES
+------------------------------------------------------------------------
+local function togglePanel(id)
+    local vis = UI.getAttribute(id, "active")
+    if vis == "true" or vis == true then
+        UI.hide(id)
+    else
+        UI.show(id)
+    end
+end
+
+function toggleDicePanel()    togglePanel("dice_panel")    end
+function toggleAttackPanel()  togglePanel("attack_panel")  end
+function toggleSavePanel()    togglePanel("save_panel")    end
+function toggleMoralePanel()  togglePanel("morale_panel")  end
+
+------------------------------------------------------------------------
+-- DICE ROLLER PANEL HANDLERS
+------------------------------------------------------------------------
+
+-- Quick preset roll triggered by a toolbar button: param = "NdS"
+function quickRoll(param)
+    local num, sides = tostring(param):match("(%d+)d(%d+)")
+    num = tonumber(num); sides = tonumber(sides)
+    if not num or not sides then return end
+    local results = rollDice(num, sides)
+    local total   = tableSum(results)
+    printToAll(
+        string.format("[Dice] %dd%d → [%s]  Total: %d",
+            num, sides, fmt(results), total),
+        {r=1, g=0.85, b=0.1})
+    pushHistory("Quick " .. num .. "d" .. sides, results, total)
+    UI.setAttribute("dice_result", "text",
+        string.format("%dd%d → [%s]  = %d", num, sides, fmt(results), total))
+end
+
+-- Custom roll from the input fields in the dice panel
+function rollCustomDice()
+    local num   = tonumber(UI.getValue("dice_num_input"))   or 1
+    local sides = tonumber(UI.getValue("dice_side_input"))  or 6
+    num   = math.max(1, math.min(num, 30))
+    sides = math.max(2, math.min(sides, 100))
+    local results = rollDice(num, sides)
+    local total   = tableSum(results)
+    printToAll(
+        string.format("[Dice] %dd%d → [%s]  Total: %d",
+            num, sides, fmt(results), total),
+        {r=1, g=0.85, b=0.1})
+    pushHistory("Custom " .. num .. "d" .. sides, results, total)
+    UI.setAttribute("dice_result", "text",
+        string.format("%dd%d → [%s]  = %d", num, sides, fmt(results), total))
+end
+
+------------------------------------------------------------------------
+-- ATTACK BUILDER PANEL HANDLERS
+------------------------------------------------------------------------
+function rollAttackPanel()
+    local n   = tonumber(UI.getValue("atk_attacks")) or 1
+    local h   = tonumber(UI.getValue("atk_hit"))     or 3
+    local w   = tonumber(UI.getValue("atk_wound"))   or 4
+    local ap  = tonumber(UI.getValue("atk_ap"))      or 0
+    local dmg =          UI.getValue("atk_dmg")      or "1"
+    local sv  = tonumber(UI.getValue("atk_save"))    or 5
+
+    dmg = dmg ~= "" and dmg or "1"
+    -- Clamp sensible ranges
+    n  = math.max(1, math.min(n,  100))
+    h  = math.max(2, math.min(h,  6))
+    w  = math.max(2, math.min(w,  6))
+    sv = math.max(2, math.min(sv, 6))
+
+    -- Use a ghost player context (global, no colour)
+    fullAttackSequence(nil, n, h, w, ap, dmg, sv)
+end
+
+-- Stepper helpers wired to the ▲▼ buttons next to each field
+local function stepField(id, delta, minVal, maxVal)
+    local v = tonumber(UI.getValue(id)) or 0
+    v = math.max(minVal, math.min(maxVal, v + delta))
+    UI.setValue(id, tostring(v))
+end
+
+function atkHitUp()    stepField("atk_hit",     1, 2, 6) end
+function atkHitDn()    stepField("atk_hit",    -1, 2, 6) end
+function atkWoundUp()  stepField("atk_wound",   1, 2, 6) end
+function atkWoundDn()  stepField("atk_wound",  -1, 2, 6) end
+function atkApUp()     stepField("atk_ap",      1, -6, 0) end
+function atkApDn()     stepField("atk_ap",     -1, -6, 0) end
+function atkSaveUp()   stepField("atk_save",    1, 2, 6) end
+function atkSaveDn()   stepField("atk_save",   -1, 2, 6) end
+function atkAttUp()    stepField("atk_attacks", 1, 1, 100) end
+function atkAttDn()    stepField("atk_attacks",-1, 1, 100) end
+
+------------------------------------------------------------------------
+-- SAVE ROLLER PANEL HANDLERS
+------------------------------------------------------------------------
+function rollSavePanel()
+    local nd = tonumber(UI.getValue("sv_dice"))  or 1
+    local sv = tonumber(UI.getValue("sv_save"))  or 5
+    local ap = tonumber(UI.getValue("sv_ap"))    or 0
+    nd = math.max(1, math.min(nd, 50))
+    sv = math.max(2, math.min(sv, 6))
+    rollSaves(nil, nd, sv, ap)
+end
+
+function svDiceUp()  stepField("sv_dice",  1, 1, 50) end
+function svDiceDn()  stepField("sv_dice", -1, 1, 50) end
+function svSaveUp()  stepField("sv_save",  1, 2, 6)  end
+function svSaveDn()  stepField("sv_save", -1, 2, 6)  end
+function svApUp()    stepField("sv_ap",    1, -6, 0)  end
+function svApDn()    stepField("sv_ap",   -1, -6, 0)  end
+
+------------------------------------------------------------------------
+-- MORALE PANEL HANDLERS
+------------------------------------------------------------------------
+function rollMoralePanel()
+    local ld   = tonumber(UI.getValue("mr_ld"))   or 7
+    local lost = tonumber(UI.getValue("mr_lost"))  or 1
+    ld   = math.max(1, math.min(ld,   10))
+    lost = math.max(0, math.min(lost, 20))
+    moraleTest(nil, ld, lost)
+end
+
+function mrLdUp()    stepField("mr_ld",    1, 1, 10) end
+function mrLdDn()    stepField("mr_ld",   -1, 1, 10) end
+function mrLostUp()  stepField("mr_lost",  1, 0, 20) end
+function mrLostDn()  stepField("mr_lost", -1, 0, 20) end
+
+------------------------------------------------------------------------
 -- UI XML
 ------------------------------------------------------------------------
 local function buildWoundRows()
@@ -931,133 +1060,378 @@ local function buildPhaseButtons()
     return btns
 end
 
+-- Helper: a small labelled stepper row  <Label> [▼] [field] [▲]
+local function stepRow(label, fieldId, dnFn, upFn, defaultVal, hint, w)
+    w = w or 52
+    return string.format([[
+      <HorizontalLayout height="34" spacing="4">
+        <Text text="%s" fontSize="13" color="#aaaacc"
+              alignment="MiddleLeft" width="96" />
+        <Button text="▼" fontSize="13" color="#2d2d44" textColor="#aaaacc"
+                width="26" height="28" onClick="%s" />
+        <InputField id="%s" text="%s" placeholder="%s"
+                    fontSize="14" width="%d" height="28"
+                    characterValidation="Integer" />
+        <Button text="▲" fontSize="13" color="#2d2d44" textColor="#aaaacc"
+                width="26" height="28" onClick="%s" />
+      </HorizontalLayout>
+    ]], label, dnFn, fieldId, tostring(defaultVal), hint, w, upFn)
+end
+
 -- Toolbar anchor: bottom-right when FTC present, bottom-centre otherwise.
--- We build the XML as a string so the position can be set at runtime before
--- UI.setXml() is called (inside onLoad, after FTC detection).
 local function buildXml(ftcMode)
-    local toolbarPos    = ftcMode and "460 -330 0" or "0 -340 0"
-    local turnPanelVis  = ftcMode and "false" or "false"   -- always starts hidden
+    local toolbarPos = ftcMode and "460 -335 0" or "0 -335 0"
+    local ftcBtn     = ftcMode
+        and '<Button text="⚙ FTC" fontSize="12" color="#1a6644" textColor="#44ee88" width="62" onClick="importAllFtcUnits" />'
+        or  ""
+    local ftcBadge   = ftcMode
+        and '<Text text="⚙ FTC" fontSize="11" color="#44bb88" alignment="MiddleCenter" width="52" />'
+        or  ""
 
     return string.format([[
 <Canvas>
 
-<!-- ── TOOLBAR ─────────────────────────────────────────────────── -->
-<HorizontalLayout id="toolbar" position="%s" width="430" height="44"
-                  color="#1a1a2e" padding="4 4 4 4" spacing="4">
-  <Button text="📜 Rules"   fontSize="13" color="#2d2d44" textColor="#aaaacc"
-          width="84"  onClick="openYelloscribe" />
-  <Button text="⏱ Turn"    fontSize="13" color="#2d2d44" textColor="#aaaacc"
-          width="74"  onClick="toggleTurnTracker" />
-  <Button text="❤ HP"      fontSize="13" color="#2d2d44" textColor="#aaaacc"
-          width="64"  onClick="toggleWoundTracker" />
+<!-- ══════════════════════════════════════════════════════════════════
+     MAIN TOOLBAR  (always visible, draggable)
+     ══════════════════════════════════════════════════════════════════ -->
+<HorizontalLayout id="toolbar" position="%s" width="620" height="46"
+                  color="#12121e" padding="4 4 4 4" spacing="3"
+                  allowDragging="true">
+
+  <!-- Section label -->
+  <Text text="WH40K" fontSize="11" fontStyle="Bold" color="#e63946"
+        alignment="MiddleCenter" width="48" />
+
+  <!-- Dice -->
+  <Button text="🎲 Dice"   fontSize="12" color="#1e2a3a" textColor="#7ab8f5"
+          width="68" onClick="toggleDicePanel" />
+
+  <!-- Attack -->
+  <Button text="⚔ Attack" fontSize="12" color="#1e2a3a" textColor="#f4a261"
+          width="72" onClick="toggleAttackPanel" />
+
+  <!-- Save -->
+  <Button text="🛡 Save"   fontSize="12" color="#1e2a3a" textColor="#a8d8a8"
+          width="66" onClick="toggleSavePanel" />
+
+  <!-- Morale -->
+  <Button text="💀 Morale" fontSize="12" color="#1e2a3a" textColor="#cc99ff"
+          width="72" onClick="toggleMoralePanel" />
+
+  <Text text="|" fontSize="14" color="#333355" alignment="MiddleCenter" width="10" />
+
+  <!-- Turn tracker -->
+  <Button text="⏱ Turn"   fontSize="12" color="#1e2a3a" textColor="#aaaacc"
+          width="62" onClick="toggleTurnTracker" />
+
+  <!-- Wound tracker -->
+  <Button text="❤ HP"     fontSize="12" color="#1e2a3a" textColor="#ff7777"
+          width="56" onClick="toggleWoundTracker" />
+
+  <!-- Yelloscribe -->
+  <Button text="📜 Rules"  fontSize="12" color="#1e2a3a" textColor="#aaaacc"
+          width="68" onClick="openYelloscribe" />
+
+  <!-- FTC (conditional) -->
   %s
-  <Text text="!help" fontSize="11" color="#555577"
-        alignment="MiddleCenter" flexibleWidth="1" />
+
 </HorizontalLayout>
 
-<!-- ── TURN TRACKER ─────────────────────────────────────────────── -->
-<Panel id="turn_tracker_panel" active="%s"
-       position="300 160 0" width="340" height="260"
-       color="#1a1a2e" allowDragging="true"
+
+<!-- ══════════════════════════════════════════════════════════════════
+     DICE ROLLER PANEL
+     ══════════════════════════════════════════════════════════════════ -->
+<Panel id="dice_panel" active="false"
+       position="-310 180 0" width="310" height="310"
+       color="#12121e" allowDragging="true"
        showAnimation="Grow" hideAnimation="Shrink">
   <VerticalLayout padding="8 8 8 8" spacing="6">
-    <HorizontalLayout height="40" color="#e63946" padding="6 6 4 4">
-      <Text text="Turn Tracker" fontSize="18" fontStyle="Bold"
-            color="White" alignment="MiddleLeft" flexibleWidth="1" />
-      <Button text="✕" fontSize="16" color="#c1121f" textColor="White"
-              width="36" height="36" onClick="toggleTurnTracker" />
+
+    <HorizontalLayout height="38" color="#1e2a3a" padding="6 6 4 4">
+      <Text text="🎲 Dice Roller" fontSize="16" fontStyle="Bold"
+            color="#7ab8f5" alignment="MiddleLeft" flexibleWidth="1" />
+      <Button text="✕" fontSize="14" color="#1a1a2e" textColor="#aaaacc"
+              width="32" height="32" onClick="toggleDicePanel" />
     </HorizontalLayout>
-    <HorizontalLayout height="30" spacing="8">
-      <Text id="tt_round"  text="Round 1" fontSize="16" fontStyle="Bold"
+
+    <!-- Quick preset buttons — 2 rows of 4 -->
+    <Text text="Quick rolls" fontSize="11" color="#555577"
+          alignment="MiddleCenter" height="16" />
+    <HorizontalLayout height="34" spacing="4">
+      <Button text="1d6"  fontSize="14" color="#1e3050" textColor="#7ab8f5"
+              flexibleWidth="1" onClick="quickRoll|1d6" />
+      <Button text="2d6"  fontSize="14" color="#1e3050" textColor="#7ab8f5"
+              flexibleWidth="1" onClick="quickRoll|2d6" />
+      <Button text="3d6"  fontSize="14" color="#1e3050" textColor="#7ab8f5"
+              flexibleWidth="1" onClick="quickRoll|3d6" />
+      <Button text="4d6"  fontSize="14" color="#1e3050" textColor="#7ab8f5"
+              flexibleWidth="1" onClick="quickRoll|4d6" />
+    </HorizontalLayout>
+    <HorizontalLayout height="34" spacing="4">
+      <Button text="1d3"  fontSize="14" color="#1e3050" textColor="#aaddff"
+              flexibleWidth="1" onClick="quickRoll|1d3" />
+      <Button text="2d3"  fontSize="14" color="#1e3050" textColor="#aaddff"
+              flexibleWidth="1" onClick="quickRoll|2d3" />
+      <Button text="1d12" fontSize="13" color="#1e3050" textColor="#aaddff"
+              flexibleWidth="1" onClick="quickRoll|1d12" />
+      <Button text="1d20" fontSize="13" color="#1e3050" textColor="#aaddff"
+              flexibleWidth="1" onClick="quickRoll|1d20" />
+    </HorizontalLayout>
+
+    <!-- Custom NdS row -->
+    <Text text="Custom roll" fontSize="11" color="#555577"
+          alignment="MiddleCenter" height="16" />
+    <HorizontalLayout height="34" spacing="6">
+      <InputField id="dice_num_input"  text="1"  placeholder="#"
+                  fontSize="16" width="56" height="32"
+                  characterValidation="Integer" />
+      <Text text="d" fontSize="18" color="#7ab8f5"
+            alignment="MiddleCenter" width="16" />
+      <InputField id="dice_side_input" text="6"  placeholder="S"
+                  fontSize="16" width="56" height="32"
+                  characterValidation="Integer" />
+      <Button text="Roll" fontSize="14" color="#1e5080" textColor="#7ab8f5"
+              flexibleWidth="1" height="32" onClick="rollCustomDice" />
+    </HorizontalLayout>
+
+    <!-- Result display -->
+    <Text id="dice_result" text="—" fontSize="13" color="#f4a261"
+          alignment="MiddleCenter" height="26" />
+
+  </VerticalLayout>
+</Panel>
+
+
+<!-- ══════════════════════════════════════════════════════════════════
+     ATTACK BUILDER PANEL
+     ══════════════════════════════════════════════════════════════════ -->
+<Panel id="attack_panel" active="false"
+       position="0 120 0" width="320" height="400"
+       color="#12121e" allowDragging="true"
+       showAnimation="Grow" hideAnimation="Shrink">
+  <VerticalLayout padding="8 8 8 8" spacing="5">
+
+    <HorizontalLayout height="38" color="#2a1800" padding="6 6 4 4">
+      <Text text="⚔ Attack Builder" fontSize="16" fontStyle="Bold"
+            color="#f4a261" alignment="MiddleLeft" flexibleWidth="1" />
+      <Button text="✕" fontSize="14" color="#1a1a2e" textColor="#aaaacc"
+              width="32" height="32" onClick="toggleAttackPanel" />
+    </HorizontalLayout>
+
+    <Text text="Hit→Wound→Save→Damage  (applies to selected HP unit)"
+          fontSize="11" color="#555577" alignment="MiddleCenter" height="18" />
+
+    %s
+
+    <!-- Damage field (text — supports D3/D6) -->
+    <HorizontalLayout height="34" spacing="4">
+      <Text text="Damage" fontSize="13" color="#aaaacc"
+            alignment="MiddleLeft" width="96" />
+      <InputField id="atk_dmg" text="1" placeholder="1/D3/D6"
+                  fontSize="14" flexibleWidth="1" height="28" />
+    </HorizontalLayout>
+
+    %s
+
+    <Button text="⚔  Roll Full Attack Sequence" fontSize="14"
+            color="#7a2000" textColor="#f4a261" height="40"
+            onClick="rollAttackPanel" />
+
+    <Text text="Damage auto-applies to selected Wound Tracker unit"
+          fontSize="10" color="#444466" alignment="MiddleCenter" height="16" />
+
+  </VerticalLayout>
+</Panel>
+
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SAVE ROLLER PANEL
+     ══════════════════════════════════════════════════════════════════ -->
+<Panel id="save_panel" active="false"
+       position="340 160 0" width="300" height="260"
+       color="#12121e" allowDragging="true"
+       showAnimation="Grow" hideAnimation="Shrink">
+  <VerticalLayout padding="8 8 8 8" spacing="6">
+
+    <HorizontalLayout height="38" color="#0d2a0d" padding="6 6 4 4">
+      <Text text="🛡 Armour Save" fontSize="16" fontStyle="Bold"
+            color="#a8d8a8" alignment="MiddleLeft" flexibleWidth="1" />
+      <Button text="✕" fontSize="14" color="#1a1a2e" textColor="#aaaacc"
+              width="32" height="32" onClick="toggleSavePanel" />
+    </HorizontalLayout>
+
+    <Text text="Roll armour saves for incoming wounds"
+          fontSize="11" color="#555577" alignment="MiddleCenter" height="16" />
+
+    %s
+
+    <Button text="🛡  Roll Saves" fontSize="15"
+            color="#0d3a0d" textColor="#a8d8a8" height="40"
+            onClick="rollSavePanel" />
+
+    <Text text="AP reduces save target (AP -2 on a 3+ save = 5+)"
+          fontSize="10" color="#444466" alignment="MiddleCenter" height="16" />
+
+  </VerticalLayout>
+</Panel>
+
+
+<!-- ══════════════════════════════════════════════════════════════════
+     MORALE TEST PANEL
+     ══════════════════════════════════════════════════════════════════ -->
+<Panel id="morale_panel" active="false"
+       position="340 -80 0" width="300" height="230"
+       color="#12121e" allowDragging="true"
+       showAnimation="Grow" hideAnimation="Shrink">
+  <VerticalLayout padding="8 8 8 8" spacing="6">
+
+    <HorizontalLayout height="38" color="#1e0a2a" padding="6 6 4 4">
+      <Text text="💀 Morale Test" fontSize="16" fontStyle="Bold"
+            color="#cc99ff" alignment="MiddleLeft" flexibleWidth="1" />
+      <Button text="✕" fontSize="14" color="#1a1a2e" textColor="#aaaacc"
+              width="32" height="32" onClick="toggleMoralePanel" />
+    </HorizontalLayout>
+
+    <Text text="Roll + models lost vs Leadership"
+          fontSize="11" color="#555577" alignment="MiddleCenter" height="16" />
+
+    %s
+
+    <Button text="💀  Roll Morale Test" fontSize="15"
+            color="#2a0a3a" textColor="#cc99ff" height="40"
+            onClick="rollMoralePanel" />
+
+  </VerticalLayout>
+</Panel>
+
+
+<!-- ══════════════════════════════════════════════════════════════════
+     TURN TRACKER PANEL
+     ══════════════════════════════════════════════════════════════════ -->
+<Panel id="turn_tracker_panel" active="false"
+       position="-310 -40 0" width="330" height="268"
+       color="#12121e" allowDragging="true"
+       showAnimation="Grow" hideAnimation="Shrink">
+  <VerticalLayout padding="8 8 8 8" spacing="6">
+    <HorizontalLayout height="38" color="#e63946" padding="6 6 4 4">
+      <Text text="⏱ Turn Tracker" fontSize="16" fontStyle="Bold"
             color="White" alignment="MiddleLeft" flexibleWidth="1" />
-      <Text id="tt_player" text="Player 1" fontSize="13"
+      <Button text="✕" fontSize="14" color="#c1121f" textColor="White"
+              width="32" height="32" onClick="toggleTurnTracker" />
+    </HorizontalLayout>
+    <HorizontalLayout height="28" spacing="8">
+      <Text id="tt_round"  text="Round 1" fontSize="15" fontStyle="Bold"
+            color="White" alignment="MiddleLeft" flexibleWidth="1" />
+      <Text id="tt_player" text="Player 1" fontSize="12"
             color="#aaaacc" alignment="MiddleRight" flexibleWidth="1" />
     </HorizontalLayout>
-    <Text id="tt_phase" text="Command Phase" fontSize="15"
-          color="#f4a261" alignment="MiddleCenter" height="24" />
-    <GridLayout cellWidth="152" cellHeight="30" spacing="4">
+    <Text id="tt_phase" text="Command Phase" fontSize="14"
+          color="#f4a261" alignment="MiddleCenter" height="22" />
+    <GridLayout cellWidth="148" cellHeight="28" spacing="4">
       %s
     </GridLayout>
-    <HorizontalLayout height="34" spacing="8">
-      <Button text="◀ Prev" fontSize="13" color="#2d2d44" textColor="#aaaacc"
+    <HorizontalLayout height="32" spacing="6">
+      <Button text="◀ Prev" fontSize="12" color="#2d2d44" textColor="#aaaacc"
               flexibleWidth="1" onClick="prevPhase" />
-      <Button text="Reset"  fontSize="13" color="#555566" textColor="#aaaacc"
-              width="66" onClick="resetTurn" />
-      <Button text="Next ▶" fontSize="13" color="#e63946" textColor="White"
+      <Button text="Reset"  fontSize="12" color="#555566" textColor="#aaaacc"
+              width="60" onClick="resetTurn" />
+      <Button text="Next ▶" fontSize="12" color="#e63946" textColor="White"
               flexibleWidth="1" onClick="nextPhase" />
     </HorizontalLayout>
   </VerticalLayout>
 </Panel>
 
-<!-- ── WOUND TRACKER ─────────────────────────────────────────────── -->
+
+<!-- ══════════════════════════════════════════════════════════════════
+     WOUND TRACKER PANEL
+     ══════════════════════════════════════════════════════════════════ -->
 <Panel id="wound_tracker_panel" active="false"
-       position="-340 80 0" width="430" height="570"
-       color="#1a1a2e" allowDragging="true"
+       position="-310 200 0" width="430" height="570"
+       color="#12121e" allowDragging="true"
        showAnimation="Grow" hideAnimation="Shrink">
   <VerticalLayout padding="8 8 8 8" spacing="4">
-    <HorizontalLayout height="40" color="#e63946" padding="6 6 4 4">
-      <Text text="Wound Tracker" fontSize="18" fontStyle="Bold"
+    <HorizontalLayout height="38" color="#e63946" padding="6 6 4 4">
+      <Text text="❤ Wound Tracker" fontSize="16" fontStyle="Bold"
             color="White" alignment="MiddleLeft" flexibleWidth="1" />
       %s
-      <Button text="✕" fontSize="16" color="#c1121f" textColor="White"
-              width="36" height="36" onClick="toggleWoundTracker" />
+      <Button text="✕" fontSize="14" color="#c1121f" textColor="White"
+              width="32" height="32" onClick="toggleWoundTracker" />
     </HorizontalLayout>
     <Text id="wt_selected_label" text="Selected: (none)"
           fontSize="12" color="#aaaacc" alignment="MiddleLeft" height="18" />
     <VerticalLayout id="wt_unit_list" spacing="2">
       %s
     </VerticalLayout>
-    <HorizontalLayout height="34" spacing="4" color="#14142a" padding="4 4 2 2">
+    <HorizontalLayout height="32" spacing="4" color="#0a0a1a" padding="4 4 2 2">
       <InputField id="wt_quick_name"   placeholder="Unit name"
-                  fontSize="13" flexibleWidth="1" height="30" />
+                  fontSize="13" flexibleWidth="1" height="28" />
       <InputField id="wt_quick_wounds" placeholder="W"
-                  fontSize="13" width="50" height="30"
+                  fontSize="13" width="46" height="28"
                   characterValidation="Integer" />
       <Button text="Add" fontSize="13" color="#2dc653" textColor="White"
-              width="50" height="30" onClick="quickAddUnit" />
+              width="46" height="28" onClick="quickAddUnit" />
     </HorizontalLayout>
-    <Text text='!addunit &quot;Name&quot; wounds  |  !wound &quot;Name&quot; n  |  !ftcimport'
-          fontSize="11" color="#555577" alignment="MiddleCenter" height="18" />
+    <Text text='Or: !addunit "Name" wounds  |  !wound "Name" n  |  !ftcimport'
+          fontSize="10" color="#444466" alignment="MiddleCenter" height="16" />
   </VerticalLayout>
 </Panel>
 
-<!-- ── YELLOSCRIBE ───────────────────────────────────────────────── -->
+
+<!-- ══════════════════════════════════════════════════════════════════
+     YELLOSCRIBE PANEL
+     ══════════════════════════════════════════════════════════════════ -->
 <Panel id="yelloscribe_panel" active="false"
        position="0 0 0" width="940" height="740"
-       color="#1a1a2e" allowDragging="true"
+       color="#12121e" allowDragging="true"
        showAnimation="Grow" hideAnimation="Shrink">
   <VerticalLayout padding="0 0 0 0" spacing="0">
     <HorizontalLayout height="46" color="#e63946" padding="8 8 4 4" spacing="6">
-      <Text text="Yelloscribe — WH40K Rules Lookup" fontSize="20"
+      <Text text="📜 Yelloscribe — WH40K Rules Lookup" fontSize="19"
             fontStyle="Bold" color="White" alignment="MiddleLeft" flexibleWidth="1" />
       <Button text="✕" fontSize="18" color="#c1121f" textColor="White"
               width="40" height="40" onClick="closeYelloscribe" />
     </HorizontalLayout>
-    <HorizontalLayout height="42" color="#14142a" padding="6 6 4 4" spacing="6">
+    <HorizontalLayout height="40" color="#0a0a1a" padding="6 6 4 4" spacing="6">
       <Text text="Add to Wound Tracker:" fontSize="13" color="#aaaacc"
-            alignment="MiddleLeft" width="160" />
+            alignment="MiddleLeft" width="156" />
       <InputField id="ys_unit_name_input"   placeholder="Unit name from datasheet"
-                  fontSize="13" flexibleWidth="1" height="30" />
+                  fontSize="13" flexibleWidth="1" height="28" />
       <InputField id="ys_unit_wounds_input" placeholder="W"
-                  fontSize="13" width="54" height="30"
+                  fontSize="13" width="50" height="28"
                   characterValidation="Integer" />
       <Button text="✚ Track" fontSize="13" color="#2dc653" textColor="White"
-              width="80" height="30" onClick="ysSetUnit" />
+              width="78" height="28" onClick="ysSetUnit" />
     </HorizontalLayout>
     <WebBrowser id="ys_browser" url="https://www.yelloscribe.com"
-                width="940" height="652" />
+                width="940" height="654" />
   </VerticalLayout>
 </Panel>
 
 </Canvas>
     ]],
+    -- 1: toolbar position
     toolbarPos,
-    -- FTC import button in toolbar (only when FTC present)
-    ftcMode and '<Button text="⚙ FTC" fontSize="13" color="#1a6644" textColor="#44ee88" width="72" onClick="importAllFtcUnits" />' or "",
-    turnPanelVis,
+    -- 2: FTC button in toolbar
+    ftcBtn,
+    -- 3: Attack panel — top steppers (attacks, hit, wound, AP)
+    stepRow("Attacks",  "atk_attacks", "atkAttDn", "atkAttUp", 5,  "#",  52) ..
+    stepRow("Hit+",     "atk_hit",     "atkHitDn", "atkHitUp", 3,  "2-6",52) ..
+    stepRow("Wound+",   "atk_wound",   "atkWoundDn","atkWoundUp",4,"2-6",52),
+    -- 4: Attack panel — bottom steppers (AP, save)
+    stepRow("AP",       "atk_ap",      "atkApDn",  "atkApUp",  0,  "0..-6",52) ..
+    stepRow("Save+",    "atk_save",    "atkSaveDn","atkSaveUp", 5,  "2-6",52),
+    -- 5: Save panel steppers
+    stepRow("# Dice",   "sv_dice",     "svDiceDn", "svDiceUp", 4,  "#",  52) ..
+    stepRow("Save+",    "sv_save",     "svSaveDn", "svSaveUp", 3,  "2-6",52) ..
+    stepRow("AP",       "sv_ap",       "svApDn",   "svApUp",   0,  "0..-6",52),
+    -- 6: Morale panel steppers
+    stepRow("Leadership","mr_ld",      "mrLdDn",   "mrLdUp",   7,  "1-10",52) ..
+    stepRow("Models Lost","mr_lost",   "mrLostDn", "mrLostUp", 1,  "0+",  52),
+    -- 7: turn phase buttons
     buildPhaseButtons(),
-    -- FTC sync badge in wound tracker header
-    ftcMode and '<Text text="⚙ FTC Linked" fontSize="12" color="#44bb88" alignment="MiddleCenter" flexibleWidth="1" />' or "",
+    -- 8: FTC badge in wound tracker header
+    ftcBadge,
+    -- 9: wound tracker unit rows
     buildWoundRows()
     )
 end

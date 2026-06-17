@@ -7,6 +7,67 @@ Changes within each version are grouped by type.
 
 ---
 
+## [1.3.0] 2026-06-17 — Toolbar Toggle
+
+### Added
+- **≡ persistent toggle button** — a small red `≡` button is pinned to the
+  bottom-right corner of the screen at all times, independent of the toolbar.
+  Clicking it hides or shows the toolbar without any chat command.
+- When the toolbar is hidden the button label changes to **▲ WH40K** so it
+  remains discoverable; restoring the toolbar reverts it to `≡`.
+- `!toolbar` chat command — same toggle behaviour, useful as a keyboard
+  fallback when the button is off-screen on non-standard resolutions.
+
+---
+
+## [1.2.0] 2026-06-17 — FTC Safety & Tables Button
+
+### Added
+- **🪑 Tables toolbar button** — direct one-click access to `spawnSideTables`
+  (previously only available via `!tables` chat command).
+
+### Fixed
+- **Model scaling no longer affects FTC unit models** — `isScalable()` now
+  returns `false` for untagged `Custom_Model` objects when Free the Codex is
+  loaded. Only objects explicitly tagged `Miniature` are scaled in FTC mode,
+  preventing accidental rescaling of FTC's own unit figures.
+  Non-FTC behaviour is unchanged.
+
+### Documented
+- Added FTC dice mat wiring instructions to README and help panel: tag FTC
+  dice trays with `DiceMat`, then run `!tables` to auto-position them on
+  player side tables. Double-announce tip included.
+
+---
+
+## [1.1.0] 2026-06-17 — Surrender System
+
+### Added
+- **⚑ Yield toolbar button** — opens the surrender confirmation panel for the
+  clicking player. Does not use a `|value` parameter so player identity is
+  passed correctly.
+- `!surrender` chat command — identical trigger for keyboard users.
+- **Surrender confirmation panel** (360 × 230 px, dark red, draggable):
+  - Displays the surrendering player's Steam name and seat colour.
+  - Lists what will be removed before committing.
+  - **Cancel** button — closes panel, no action taken.
+  - **⚑ Confirm Surrender** button — executes cleanup.
+- `doSurrenderCleanup(colorName)`:
+  - Removes all `isScalable()` objects within radius 14 (XZ) of the
+    player's side table (staged models).
+  - Removes all data cards matching the player's seat colour and rebuilds
+    physical notecards for remaining players.
+  - Removes all stratagems matching the player's seat colour and rebuilds
+    physical notecards for remaining players.
+  - Broadcasts a colour-coded announcement to every seated player listing
+    counts removed; notes that main-board deployed models must be cleared
+    manually.
+- `surrenderedColors` table tracks which colours have already surrendered;
+  repeated `!surrender` calls are silently ignored.
+- `!surrender` and `!toolbar` entries added to `!help` and the Help panel.
+
+---
+
 ## [1.0.0] 2026-06-17 — New Recruit / BattleScribe XML Import
 
 ### Added

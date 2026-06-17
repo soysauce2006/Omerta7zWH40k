@@ -7,6 +7,36 @@ Changes within each version are grouped by type.
 
 ---
 
+## [1.0.0] 2026-06-17 — New Recruit / BattleScribe XML Import
+
+### Added
+- **📥 Import panel** — new toolbar button (and `!import` chat command) opens a
+  draggable panel with a large paste area and three import buttons.
+- **🧬 Import Units** — parses `<selection type="unit">` entries from a
+  BattleScribe `.ros` export; extracts unit name, W (wounds per model) from the
+  datasheet profile, and model count from child `type="model"` selections.
+  Loads all units directly into the ❤ HP wound tracker via `addUnit()`.
+- **⚡ Import Strats** — parses `<profile profileTypeName="Stratagem">` entries;
+  extracts name, CP cost (1–3), When/phase, and Effect description (≤ 200 chars).
+  Saves to the shared `stratagems[]` list and spawns physical notecards on the
+  player's side table, identical to manually-saved strats.
+- **🧬+⚡ Import All** — runs both parsers in one click.
+- Status line in the panel confirms what was imported or reports parse failures
+  with a clear message (e.g. `✓ 8 units  +  12 stratagems imported`).
+- Pure-Lua XML parser — no external libraries; handles both `<element>text</element>`
+  and `<element value="…"/>` characteristic forms, and decodes `&amp;` / `&lt;` /
+  `&gt;` / `&quot;` / `&apos;` entities.
+- Help panel updated with step-by-step New Recruit export instructions and a
+  description of each import button.
+- Toolbar width increased 824 → 900 px to accommodate the new button.
+
+### Workflow
+1. New Recruit → open army list → **Export → BattleScribe (.ros)**.
+2. Open the `.ros` file in a text editor, select all, copy.
+3. In TTS click **📥 Import**, paste, click the appropriate button.
+
+---
+
 ## [0.9.0] 2026-06-17 — Yelloscribe Stratagem Pin
 
 ### Added

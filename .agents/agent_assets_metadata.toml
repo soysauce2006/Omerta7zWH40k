@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "2vZ7ANKr8txb3oYKznbfP"
+uri = "file://tts-mod/README.md"
+type = "text"
+title = "WH40K TTS Mod — Install Instructions"

@@ -2,6 +2,20 @@
 --  WH40K Dice Mat · Yelloscribe · Turn Tracker · Wound Tracker
 --  + Free the Codex (FTC) compatibility layer
 --  Global script for Tabletop Simulator
+--
+--  See tts-mod/README.md for full install instructions.
+-- =============================================================================
+--
+--  QUICK INSTALL
+--  ─────────────
+--  1. In TTS: Modding → Scripting Editor → click "Global" in the left panel.
+--  2. Delete all existing content, paste this entire file, click Save & Play.
+--  3. The WH40K toolbar appears at the bottom of the screen.
+--  4. (Optional) Tag any object "DiceMat" to enable dice auto-announce.
+--  5. (FTC) Load FTC first, then paste this script — it auto-detects FTC.
+--     Click ⚙ FTC in the toolbar (or type !ftcimport) to import FTC units.
+--
+--  Type !help in chat for a command reference, or click ❓ Help in the toolbar.
 -- =============================================================================
 --
 --  FTC COMPATIBILITY NOTES
@@ -11,15 +25,15 @@
 --
 --  • Our turn tracker hides itself and syncs to FTC phase/round callbacks
 --    (onFTCPhaseStart / onFTCRoundStart).
---  • Attack-sequence damage is routed through FTC.ApplyWounds() so FTC unit
---    cards update their own counters in addition to our wound tracker.
+--  • Teams panel stays live and syncs the active army from FTC turn events.
+--    Each time FTC hands a turn to a player the correct team is highlighted.
 --  • !ftcimport pulls every unit FTC currently knows about into our wound
 --    tracker so you can use our HP bars alongside FTC's counters.
 --  • !ftcunit <guid> imports a single unit card by its TTS object GUID.
 --  • The toolbar is anchored to the bottom-right corner to avoid FTC's
 --    left-rail UI panels.
 --
---  If FTC is NOT loaded everything works identically to before — no stubs,
+--  If FTC is NOT loaded everything works identically — no stubs,
 --  no errors, no silent fallbacks with misleading output.
 -- =============================================================================
 

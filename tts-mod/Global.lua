@@ -320,6 +320,75 @@ function respawnAllPhysicalDataCards()
     end
 end
 
+------------------------------------------------------------------------
+-- PHYSICAL STRATAGEM NOTECARD OBJECTS
+-- Spawned on the player's side table, offset to the far end to avoid
+-- overlapping data cards.  Tagged "WH40K_Stratagem".
+------------------------------------------------------------------------
+local ST_COLS    = 4
+local ST_X_GAP   = 1.7
+local ST_Z_GAP   = 2.1
+local ST_Z_START = 5.0   -- Z offset from table centre (opposite end from data cards)
+
+local function buildStragegemBody(s)
+    local cp    = s.cp    and ("[CP: " .. tostring(s.cp) .. "]") or "[CP: ?]"
+    local phase = (s.phase and s.phase ~= "") and s.phase or "Any"
+    local desc  = (s.desc  and s.desc  ~= "") and s.desc  or ""
+    return cp .. "  |  " .. phase .. (desc ~= "" and ("\n\n" .. desc) or "")
+end
+
+function clearPhysicalStratagems()
+    for _, obj in ipairs(getAllObjects()) do
+        if obj.hasTag("WH40K_Stratagem") then obj.destruct() end
+    end
+end
+
+local function spawnStragegemObject(s, slotIdx)
+    if not s.playerColor or s.playerColor == "" then return end
+    local tableCfg = nil
+    for _, cfg in ipairs(SIDE_TABLE_CFG) do
+        if cfg.name == s.playerColor then tableCfg = cfg; break end
+    end
+    if not tableCfg then return end
+
+    local col     = (slotIdx - 1) % ST_COLS
+    local row     = math.floor((slotIdx - 1) / ST_COLS)
+    local startX  = tableCfg.pos[1] - ((ST_COLS - 1) * ST_X_GAP) / 2
+    local cardPos = {
+        startX + col * ST_X_GAP,
+        tableCfg.pos[2] + 0.35,
+        tableCfg.pos[3] + ST_Z_START + row * ST_Z_GAP,
+    }
+
+    local obj = spawnObject({
+        type     = "Notecard",
+        position = cardPos,
+        rotation = { tableCfg.rot[1], tableCfg.rot[2], tableCfg.rot[3] },
+        scale    = { 1.4, 1, 1.8 },
+    })
+    obj.setName(s.name)
+    obj.setDescription(buildStragegemBody(s))
+    obj.addTag("WH40K_Stratagem")
+    -- Amber tint (distinct from data cards which use the raw seat colour)
+    local p = Player[s.playerColor]
+    if p then
+        local c = p.color
+        obj.setColorTint({ c.r * 0.9 + 0.1, c.g * 0.65, c.b * 0.4 })
+    end
+end
+
+-- Clear and rebuild all physical stratagem notecards for every player.
+function respawnAllPhysicalStratagems()
+    clearPhysicalStratagems()
+    local slotByPlayer = {}
+    for _, s in ipairs(stratagems) do
+        if s.playerColor and s.playerColor ~= "" then
+            slotByPlayer[s.playerColor] = (slotByPlayer[s.playerColor] or 0) + 1
+            spawnStragegemObject(s, slotByPlayer[s.playerColor])
+        end
+    end
+end
+
 -- Destroy all tracked side tables.
 function clearSideTables()
     for _, guid in ipairs(sideTableGuids) do
@@ -332,8 +401,15 @@ end
 ------------------------------------------------------------------------
 -- DATA CARDS STATE
 ------------------------------------------------------------------------
--- Each entry: { name, faction, M, T, Sv, W, Ld, OC, notes }
+-- Each entry: { name, faction, M, T, Sv, W, Ld, OC, notes, playerColor }
 local dataCards = {}
+
+------------------------------------------------------------------------
+-- STRATAGEMS STATE
+------------------------------------------------------------------------
+-- Each entry: { name, cp, phase, desc, playerColor }
+local stratagems     = {}
+local MAX_STRATAGEMS = 20
 
 ------------------------------------------------------------------------
 -- FTC COMPATIBILITY STATE
@@ -1599,6 +1675,83 @@ function refreshDataCardsUI()
               or "No cards pinned yet — browse Yelloscribe and click Pin")
 end
 
+------------------------------------------------------------------------
+-- STRATAGEM PANEL UI FUNCTIONS
+------------------------------------------------------------------------
+function saveStratagem(player)
+    if not checkPerm(player) then return end
+    local name = UI.getValue("st_name_input")
+    if not name or name == "" then
+        log("Enter a stratagem name before saving.")
+        return
+    end
+    if #stratagems >= MAX_STRATAGEMS then
+        log("Stratagem limit (" .. MAX_STRATAGEMS .. ") reached — remove one first.")
+        return
+    end
+    local cp = math.max(1, math.min(3, tonumber(UI.getValue("st_cp_input")) or 1))
+    local s  = {
+        name        = name,
+        cp          = cp,
+        phase       = UI.getValue("st_phase_input") or "Any",
+        desc        = UI.getValue("st_desc_input")  or "",
+        playerColor = player and player.color or "",
+    }
+    stratagems[#stratagems + 1] = s
+    for _, id in ipairs({"st_name_input", "st_phase_input", "st_desc_input"}) do
+        UI.setValue(id, "")
+    end
+    refreshStrategemsUI()
+    local playerSlot = 0
+    for _, st in ipairs(stratagems) do
+        if st.playerColor == s.playerColor then playerSlot = playerSlot + 1 end
+    end
+    spawnStragegemObject(s, playerSlot)
+    log("⚡ Stratagem saved: " .. name .. " [CP:" .. cp .. "]" ..
+        (s.playerColor ~= "" and (" [" .. s.playerColor .. "]") or ""))
+end
+
+function removeStratagem(slotStr)
+    local slot = tonumber(slotStr)
+    if not slot then return end
+    local idx = slot + 1
+    if stratagems[idx] then
+        local n = stratagems[idx].name
+        table.remove(stratagems, idx)
+        refreshStrategemsUI()
+        Wait.frames(function() respawnAllPhysicalStratagems() end, 2)
+        log("⚡ Removed stratagem: " .. n)
+    end
+end
+
+function refreshStrategemsUI()
+    for i = 0, MAX_STRATAGEMS - 1 do
+        local s = stratagems[i + 1]
+        if s then
+            local badge = "CP:" .. (s.cp or "?") ..
+                          "  " .. ((s.phase ~= "" and s.phase) or "Any")
+            UI.setAttribute("st_slot_" .. i,             "active", "true")
+            UI.setAttribute("st_slot_" .. i .. "_name",  "text",   s.name)
+            UI.setAttribute("st_slot_" .. i .. "_badge", "text",   badge)
+            UI.setAttribute("st_slot_" .. i .. "_desc",  "text",   s.desc or "")
+        else
+            UI.setAttribute("st_slot_" .. i, "active", "false")
+        end
+    end
+    local n = #stratagems
+    UI.setAttribute("st_status", "text",
+        n > 0 and (n .. " stratagem" .. (n == 1 and "" or "s") .. " saved")
+              or "No stratagems yet — fill in the form and click Add")
+end
+
+function toggleStrategemsPanel()
+    if UI.getAttribute("strat_panel", "active") == "true" then
+        UI.hide("strat_panel")
+    else
+        UI.show("strat_panel")
+    end
+end
+
 function ysSetUnit()
     local name   = UI.getValue("ys_unit_name_input")
     local wpm    = tonumber(UI.getValue("ys_unit_wounds_input"))
@@ -1818,6 +1971,10 @@ function onChat(message, player)
         openYelloscribe()
         return false
 
+    elseif cmd == "!strats" then
+        toggleStrategemsPanel()
+        return false
+
     elseif cmd == "!history" then
         if #rollHistory == 0 then
             printToColor("No rolls yet.", player.color, {r=0.7,g=0.7,b=0.7})
@@ -1904,6 +2061,7 @@ function onChat(message, player)
             "!yelloscribe                 — open Yelloscribe panel",
             "!history                     — last 10 rolls",
             "!hostonly on|off             — lock controls to host only (host only)",
+            "!strats                      — open the Stratagems panel",
             "!scale <pct>                 — scale all Custom_Model minis (e.g. !scale 75)",
             "!tables                      — respawn player side tables",
             "!cleartables                 — remove player side tables",
@@ -2051,6 +2209,32 @@ function mrLostDn()  stepField("mr_lost", -1, 0, 20) end
 ------------------------------------------------------------------------
 -- UI XML
 ------------------------------------------------------------------------
+-- Pre-build MAX_STRATAGEMS empty stratagem slots for the Stratagems panel.
+local function buildStragegemSlots()
+    local rows = ""
+    for i = 0, MAX_STRATAGEMS - 1 do
+        rows = rows .. string.format([[
+<Panel id="st_slot_%d" active="false" height="56" color="#14142a" padding="4 4 3 3">
+  <HorizontalLayout spacing="2">
+    <VerticalLayout flexibleWidth="1" spacing="0">
+      <HorizontalLayout height="16" spacing="3">
+        <Text id="st_slot_%d_name"  text="" fontSize="12" fontStyle="Bold"
+              color="#f4a261" alignment="MiddleLeft" flexibleWidth="1" />
+        <Text id="st_slot_%d_badge" text="" fontSize="10" fontStyle="Bold"
+              color="#f4d35e" alignment="MiddleRight" width="90" />
+      </HorizontalLayout>
+      <Text id="st_slot_%d_desc" text="" fontSize="10"
+            color="#aaaacc" alignment="MiddleLeft" height="13" />
+    </VerticalLayout>
+    <Button text="✕" fontSize="11" color="#2a0808" textColor="#ff8888"
+            width="22" height="22" onClick="removeStratagem|%d" />
+  </HorizontalLayout>
+</Panel>
+]], i, i, i, i, i)
+    end
+    return rows
+end
+
 -- Pre-build MAX_DATACARDS empty card slots for the Yelloscribe sidebar.
 -- refreshDataCardsUI() shows/hides and fills them at runtime.
 local function buildDataCardSlots()
@@ -2169,7 +2353,7 @@ local function buildXml(ftcMode)
 <!-- ══════════════════════════════════════════════════════════════════
      MAIN TOOLBAR  (always visible, draggable)
      ══════════════════════════════════════════════════════════════════ -->
-<HorizontalLayout id="toolbar" position="%s" width="750" height="46"
+<HorizontalLayout id="toolbar" position="%s" width="824" height="46"
                   color="#12121e" padding="4 4 4 4" spacing="3"
                   allowDragging="true">
 
@@ -2218,6 +2402,10 @@ local function buildXml(ftcMode)
   <!-- Scale -->
   <Button text="⚖ Scale" fontSize="12" color="#1e2a3a" textColor="#a0d8ef"
           width="68" onClick="toggleScalePanel" />
+
+  <!-- Stratagems -->
+  <Button text="⚡ Strats" fontSize="12" color="#1e2a3a" textColor="#f4a261"
+          width="68" onClick="toggleStrategemsPanel" />
 
   <!-- Host-only badge (hidden when off) -->
   <Text id="host_lock_badge" text="🔒 HOST" fontSize="11" fontStyle="Bold"
@@ -3003,6 +3191,61 @@ local function buildXml(ftcMode)
 </Panel>
 
 
+<!-- ══════════════════════════════════════════════════════════════════
+     STRATAGEM PANEL
+     ══════════════════════════════════════════════════════════════════ -->
+<Panel id="strat_panel" active="false"
+       position="560 180 0" width="320" height="490"
+       color="#12121e" allowDragging="true"
+       showAnimation="Grow" hideAnimation="Shrink">
+  <VerticalLayout padding="8 8 8 8" spacing="5">
+
+    <!-- Title -->
+    <Text text="⚡ Stratagems" fontSize="15" fontStyle="Bold"
+          color="#f4a261" alignment="MiddleCenter" height="24" />
+
+    <!-- Name -->
+    <InputField id="st_name_input" placeholder="Stratagem name..."
+                fontSize="12" height="28" />
+
+    <!-- CP + Phase row -->
+    <HorizontalLayout height="28" spacing="4">
+      <Text text="CP" fontSize="11" color="#aaaacc"
+            alignment="MiddleCenter" width="22" />
+      <InputField id="st_cp_input" text="1" fontSize="12"
+                  width="36" height="28" />
+      <Text text="Phase" fontSize="11" color="#aaaacc"
+            alignment="MiddleCenter" width="38" />
+      <InputField id="st_phase_input" placeholder="e.g. Shooting"
+                  fontSize="12" height="28" flexibleWidth="1" />
+    </HorizontalLayout>
+
+    <!-- Description -->
+    <InputField id="st_desc_input" placeholder="Effect / reminder text..."
+                fontSize="11" height="46" lineType="MultiLineNewline" />
+
+    <!-- Add button -->
+    <Button text="⚡ Add Stratagem" fontSize="13"
+            color="#2a1a06" textColor="#f4a261"
+            height="32" onClick="saveStratagem" />
+
+    <!-- Status -->
+    <Text id="st_status" text="No stratagems yet — fill in the form and click Add"
+          fontSize="10" color="#666688" alignment="MiddleCenter" height="14" />
+
+    <Text text=" " fontSize="4" height="4" />
+
+    <!-- Saved stratagem list -->
+    <ScrollView height="264" scrollSensitivity="30">
+      <VerticalLayout spacing="2">
+        %s
+      </VerticalLayout>
+    </ScrollView>
+
+  </VerticalLayout>
+</Panel>
+
+
 </Canvas>
     ]],
     -- 1: toolbar position
@@ -3030,7 +3273,9 @@ local function buildXml(ftcMode)
     -- 9: wound tracker unit rows
     buildWoundRows(),
     -- 10: Yelloscribe data card slots
-    buildDataCardSlots()
+    buildDataCardSlots(),
+    -- 11: Stratagem panel slots
+    buildStragegemSlots()
     )
 end
 
@@ -3098,6 +3343,9 @@ function onLoad(save_state)
             if data.hostOnlyMode ~= nil then
                 hostOnlyMode = data.hostOnlyMode
             end
+            if data.stratagems then
+                stratagems = data.stratagems
+            end
         end
     end
 
@@ -3125,6 +3373,8 @@ function onLoad(save_state)
         refreshDataCardsUI()
         refreshScaleUI()
         refreshHostModeUI()
+        refreshStrategemsUI()
+        Wait.frames(function() respawnAllPhysicalStratagems() end, 25)
         if not existingTables then
             spawnSideTables()
         end
@@ -3148,5 +3398,6 @@ function onSave()
         modelScale       = modelScale,
         baseModelScales  = baseModelScales,
         hostOnlyMode     = hostOnlyMode,
+        stratagems       = stratagems,
     })
 end

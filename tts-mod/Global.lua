@@ -81,6 +81,30 @@ function spawnSideTables()
     log("Player side tables placed — drag them wherever you like!")
 end
 
+-- When FTC is active, move every DiceMat object onto its matching side table
+-- (one mat per table, cycling if there are more mats than tables).
+function positionDiceMatsForFTC()
+    local mats = {}
+    for _, obj in ipairs(getAllObjects()) do
+        if obj.hasTag("DiceMat") then
+            table.insert(mats, obj)
+        end
+    end
+    if #mats == 0 then
+        log("No DiceMat objects found — tag an object 'DiceMat' to enable auto-announce.")
+        return
+    end
+    for i, mat in ipairs(mats) do
+        local cfg = SIDE_TABLE_CFG[((i - 1) % #SIDE_TABLE_CFG) + 1]
+        -- Place on top of the side table surface (table Y + half-thickness + small gap)
+        local targetPos = { cfg.pos[1], cfg.pos[2] + 0.35, cfg.pos[3] }
+        mat.setPositionSmooth(targetPos, false, true)
+        mat.setRotationSmooth({ cfg.rot[1], cfg.rot[2], cfg.rot[3] })
+        mat.setName("DiceMat — " .. cfg.name)
+    end
+    log(#mats .. " dice mat(s) moved to player side tables.")
+end
+
 -- Destroy all tracked side tables.
 function clearSideTables()
     for _, guid in ipairs(sideTableGuids) do
@@ -1563,6 +1587,9 @@ function onChat(message, player)
 
     elseif cmd == "!tables" then
         spawnSideTables()
+        if FTC_PRESENT then
+            Wait.frames(function() positionDiceMatsForFTC() end, 10)
+        end
         return false
     elseif cmd == "!cleartables" then
         clearSideTables()
@@ -2764,6 +2791,10 @@ function onLoad(save_state)
         refreshDataCardsUI()
         if not existingTables then
             spawnSideTables()
+        end
+        -- FTC mode: spread dice mats across player side tables after they settle
+        if FTC_PRESENT then
+            Wait.frames(function() positionDiceMatsForFTC() end, 10)
         end
         log("WH40K mod ready. Type !help for commands.")
     end, 0.5)

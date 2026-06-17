@@ -45,6 +45,52 @@ local MAX_UNITS     = 12
 local MAX_DATACARDS = 30
 
 ------------------------------------------------------------------------
+-- PLAYER SIDE TABLES
+------------------------------------------------------------------------
+-- Six side tables — one per player seat — placed around the play area.
+-- Color and label match standard TTS seat colours.
+local SIDE_TABLE_TAG = "WH40K_SideTable"
+local SIDE_TABLE_CFG = {
+    -- South side (Team A) — left → center → right
+    { name="White",  clr={0.95,0.95,0.95},    pos={-16,1.0,-16}, rot={0,0,0}   },
+    { name="Brown",  clr={0.55,0.27,0.07},     pos={  0,1.0,-18}, rot={0,0,0}   },
+    { name="Red",    clr={0.86,0.10,0.10},     pos={ 16,1.0,-16}, rot={0,0,0}   },
+    -- North side (Team B) — right → center → left (mirrored)
+    { name="Orange", clr={0.96,0.42,0.07},     pos={ 16,1.0, 16}, rot={0,180,0} },
+    { name="Green",  clr={0.19,0.70,0.17},     pos={  0,1.0, 18}, rot={0,180,0} },
+    { name="Teal",   clr={0.13,0.85,0.60},     pos={-16,1.0, 16}, rot={0,180,0} },
+}
+local sideTableGuids = {}
+
+-- Spawn (or re-spawn) all six side tables.
+function spawnSideTables()
+    clearSideTables()
+    for _, cfg in ipairs(SIDE_TABLE_CFG) do
+        local obj = spawnObject({
+            type     = "BlockRectangle",
+            position = cfg.pos,
+            rotation = cfg.rot,
+            scale    = {7, 0.2, 5},
+            color    = cfg.clr,
+        })
+        obj.setName(cfg.name .. " — Player Area")
+        obj.setDescription("Dice · Tokens · Reserves")
+        obj.addTag(SIDE_TABLE_TAG)
+        table.insert(sideTableGuids, obj.getGUID())
+    end
+    log("Player side tables placed — drag them wherever you like!")
+end
+
+-- Destroy all tracked side tables.
+function clearSideTables()
+    for _, guid in ipairs(sideTableGuids) do
+        local obj = getObjectFromGUID(guid)
+        if obj then obj.destruct() end
+    end
+    sideTableGuids = {}
+end
+
+------------------------------------------------------------------------
 -- DATA CARDS STATE
 ------------------------------------------------------------------------
 -- Each entry: { name, faction, M, T, Sv, W, Ld, OC, notes }
@@ -1515,6 +1561,13 @@ function onChat(message, player)
         setTeamMode(mode)
         return false
 
+    elseif cmd == "!tables" then
+        spawnSideTables()
+        return false
+    elseif cmd == "!cleartables" then
+        clearSideTables()
+        log("Player side tables removed.")
+        return false
     elseif cmd == "!help" then
         local ftcLine = FTC_PRESENT
             and "!ftcimport              — import all FTC units into wound tracker\n"..
@@ -1538,6 +1591,8 @@ function onChat(message, player)
             "!turn                        — show current phase",
             "!yelloscribe                 — open Yelloscribe panel",
             "!history                     — last 10 rolls",
+            "!tables                      — respawn player side tables",
+            "!cleartables                 — remove player side tables",
             "!help                        — this message",
         }
         for _, line in ipairs(h) do
@@ -2693,11 +2748,23 @@ function onLoad(save_state)
         end
     end
 
+    -- Auto-spawn side tables on first load (skip if already present from a save)
+    local existingTables = false
+    for _, obj in ipairs(getAllObjects()) do
+        if obj.hasTag(SIDE_TABLE_TAG) then
+            existingTables = true
+            table.insert(sideTableGuids, obj.getGUID())
+        end
+    end
+
     Wait.time(function()
         refreshTurnUI()
         refreshWoundUI()
         refreshTeamUI()
         refreshDataCardsUI()
+        if not existingTables then
+            spawnSideTables()
+        end
         log("WH40K mod ready. Type !help for commands.")
     end, 0.5)
 end

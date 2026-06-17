@@ -1818,6 +1818,293 @@ function toggleStrategemsPanel()
     end
 end
 
+function toggleImportPanel()
+    if UI.getAttribute("import_panel", "active") == "true" then
+        UI.hide("import_panel")
+    else
+        UI.show("import_panel")
+        UI.setValue("nr_xml_input", "")
+        UI.setAttribute("nr_status", "text", "Paste BattleScribe XML above, then choose what to import.")
+    end
+end
+
+------------------------------------------------------------------------
+-- BATTLESCRIBE XML PARSER
+-- Parses a .ros / plain-text XML paste from New Recruit's BS export.
+-- No external libs — pure Lua pattern matching.
+------------------------------------------------------------------------
+
+-- Strip XML tags and decode basic entities from a string.
+local function xmlStrip(s)
+    s = s:gsub("<[^>]+>", "")
+    s = s:gsub("&amp;",  "&")
+    s = s:gsub("&lt;",   "<")
+    s = s:gsub("&gt;",   ">")
+    s = s:gsub("&quot;", '"')
+    s = s:gsub("&apos;", "'")
+    s = s:gsub("%s+", " ")
+    return s:match("^%s*(.-)%s*$")  -- trim
+end
+
+-- Return the value of an XML attribute: name="value" or name='value'
+local function xmlAttr(tag, attr)
+    return tag:match(attr .. '="([^"]*)"') or
+           tag:match(attr .. "='([^']*)'") or ""
+end
+
+-- Return all <characteristic> values keyed by name from a profile block.
+local function parseCharacteristics(block)
+    local chars = {}
+    for tag, val in block:gmatch('(<characteristic[^>]+>)(.-)</characteristic>') do
+        local name = xmlAttr(tag, "name"):lower()
+        chars[name] = xmlStrip(val)
+    end
+    -- Also handle self-closing <characteristic name="X" value="Y"/>
+    for tag in block:gmatch('<characteristic[^/]*/[^>]*>') do
+        local name = xmlAttr(tag, "name"):lower()
+        local val  = xmlAttr(tag, "value")
+        if name ~= "" and val ~= "" then chars[name] = val end
+    end
+    return chars
+end
+
+-- Parse <selection type="unit"> entries and return a list of
+-- { name, woundsPerModel, models } tables.
+local function parseBSUnits(xml)
+    local units = {}
+    -- Iterate over every <selection … type="unit" …> opening tag
+    -- and grab the chunk up to the matching </selection>.
+    -- We use a simplified approach: scan for the tag, then find the
+    -- closing </selection> that closes this depth.
+    local pos = 1
+    while true do
+        -- Find next <selection opening tag
+        local ts, te = xml:find('<selection[^>]+>', pos)
+        if not ts then break end
+        local tag = xml:sub(ts, te)
+        pos = te + 1
+
+        if xmlAttr(tag, "type") ~= "unit" then goto continue end
+
+        local unitName = xmlAttr(tag, "name")
+        if unitName == "" then goto continue end
+
+        -- Find the closing </selection> for this unit block.
+        -- Count nested <selection> opens vs closes.
+        local depth  = 1
+        local cursor = te + 1
+        local blockEnd = #xml
+        while depth > 0 do
+            local o = xml:find('<selection[^>]*/>', cursor)   -- self-closing
+            local op = xml:find('<selection[%s>]',   cursor)  -- opening
+            local cl = xml:find('</selection>',      cursor)  -- closing
+            if not cl then blockEnd = #xml; break end
+            -- self-closing doesn't change depth
+            if o and o < (op or #xml) and o < cl then
+                cursor = o + 1
+            elseif op and op < cl then
+                depth  = depth + 1
+                cursor = op + 1
+            else
+                depth  = depth - 1
+                if depth == 0 then blockEnd = cl + #'</selection>' - 1 end
+                cursor = cl + 1
+            end
+        end
+        local block = xml:sub(te + 1, blockEnd)
+
+        -- Count models: number of child <selection type="model"> tags
+        local modelCount = 0
+        for mtag in block:gmatch('<selection[^>]+>') do
+            if xmlAttr(mtag, "type") == "model" then
+                local n = tonumber(xmlAttr(mtag, "number")) or 1
+                modelCount = modelCount + n
+            end
+        end
+        if modelCount == 0 then modelCount = 1 end
+
+        -- Find W (wounds) characteristic in a Unit profile
+        local woundsPerModel = 1
+        for profTag, profBody in block:gmatch('(<profile[^>]+>)(.-)</profile>') do
+            local pt = xmlAttr(profTag, "profileTypeName"):lower()
+            if pt == "unit" or pt == "" then
+                local chars = parseCharacteristics(profBody)
+                local w = tonumber(chars["w"] or chars["wounds"] or "")
+                if w and w > 0 then
+                    woundsPerModel = w
+                    break
+                end
+            end
+        end
+
+        units[#units + 1] = {
+            name           = unitName,
+            woundsPerModel = woundsPerModel,
+            models         = modelCount,
+        }
+        ::continue::
+    end
+    return units
+end
+
+-- Parse <profile profileTypeName="Stratagem"> entries and return a list of
+-- { name, cp, phase, desc } tables.
+local function parseBSStratagems(xml)
+    local strats = {}
+    for profTag, profBody in xml:gmatch('(<profile[^>]+>)(.-)</profile>') do
+        local pt = xmlAttr(profTag, "profileTypeName"):lower()
+        if pt ~= "stratagem" then goto continue end
+
+        local name  = xmlAttr(profTag, "name")
+        if name == "" then goto continue end
+
+        local chars = parseCharacteristics(profBody)
+
+        -- CP cost: "cp cost", "cp", "cost"
+        local cpRaw = chars["cp cost"] or chars["cp"] or chars["cost"] or "1"
+        local cp    = tonumber(cpRaw:match("%d+")) or 1
+        cp = math.max(1, math.min(3, cp))
+
+        -- Phase / When: "when", "type", "phase"
+        local phase = chars["when"] or chars["type"] or chars["phase"] or "Any"
+        if phase == "" then phase = "Any" end
+
+        -- Effect / description
+        local desc = chars["effect"] or chars["description"] or chars["details"] or ""
+        -- Fallback: look for <rule> description near this profile
+        if desc == "" then
+            local vicinity = xml:sub(math.max(1, xml:find(profTag, 1, true) or 1) - 500,
+                                     (xml:find(profTag, 1, true) or 1) + 1000)
+            local d = vicinity:match('<description>(.-)</description>')
+            if d then desc = xmlStrip(d) end
+        end
+        desc = xmlStrip(desc)
+        if #desc > 200 then desc = desc:sub(1, 197) .. "…" end
+
+        strats[#strats + 1] = {
+            name  = name,
+            cp    = cp,
+            phase = phase,
+            desc  = desc,
+        }
+        ::continue::
+    end
+    return strats
+end
+
+-- Called by "🧬 Import Units" button in the Import panel.
+function nrImportUnits(player)
+    if not checkPerm(player) then return end
+    local xml = UI.getValue("nr_xml_input")
+    if not xml or xml:match("^%s*$") then
+        UI.setAttribute("nr_status", "text", "✗ Paste BattleScribe XML first.")
+        return
+    end
+    local units = parseBSUnits(xml)
+    if #units == 0 then
+        UI.setAttribute("nr_status", "text",
+            "✗ No units found — make sure this is a valid BattleScribe .ros export.")
+        return
+    end
+    local added, skipped = 0, 0
+    for _, u in ipairs(units) do
+        if #woundTracker < MAX_UNITS then
+            addUnit(u.name, u.woundsPerModel, u.models)
+            added = added + 1
+        else
+            skipped = skipped + 1
+        end
+    end
+    local msg = "✓ Imported " .. added .. " unit" .. (added == 1 and "" or "s")
+    if skipped > 0 then msg = msg .. "  (" .. skipped .. " skipped — tracker full)" end
+    UI.setAttribute("nr_status", "text", msg)
+    log("[NR Import] " .. msg)
+end
+
+-- Called by "⚡ Import Strats" button in the Import panel.
+function nrImportStrats(player)
+    if not checkPerm(player) then return end
+    local xml = UI.getValue("nr_xml_input")
+    if not xml or xml:match("^%s*$") then
+        UI.setAttribute("nr_status", "text", "✗ Paste BattleScribe XML first.")
+        return
+    end
+    local strats = parseBSStratagems(xml)
+    if #strats == 0 then
+        UI.setAttribute("nr_status", "text",
+            "✗ No Stratagem profiles found — export may not include faction rules.")
+        return
+    end
+    local added, skipped = 0, 0
+    local color = player and player.color or ""
+    for _, s in ipairs(strats) do
+        if #stratagems < MAX_STRATAGEMS then
+            stratagems[#stratagems + 1] = {
+                name        = s.name,
+                cp          = s.cp,
+                phase       = s.phase,
+                desc        = s.desc,
+                playerColor = color,
+            }
+            added = added + 1
+        else
+            skipped = skipped + 1
+        end
+    end
+    refreshStrategemsUI()
+    Wait.frames(function() respawnAllPhysicalStratagems() end, 2)
+    local msg = "✓ Imported " .. added .. " stratagem" .. (added == 1 and "" or "s")
+    if skipped > 0 then msg = msg .. "  (" .. skipped .. " skipped — list full)" end
+    UI.setAttribute("nr_status", "text", msg)
+    log("[NR Import] " .. msg)
+end
+
+-- Called by "🧬+⚡ Import All" button — runs both parsers.
+function nrImportAll(player)
+    if not checkPerm(player) then return end
+    local xml = UI.getValue("nr_xml_input")
+    if not xml or xml:match("^%s*$") then
+        UI.setAttribute("nr_status", "text", "✗ Paste BattleScribe XML first.")
+        return
+    end
+    -- Run units
+    local units  = parseBSUnits(xml)
+    local uAdded = 0
+    for _, u in ipairs(units) do
+        if #woundTracker < MAX_UNITS then
+            addUnit(u.name, u.woundsPerModel, u.models)
+            uAdded = uAdded + 1
+        end
+    end
+    -- Run strats
+    local strats = parseBSStratagems(xml)
+    local sAdded = 0
+    local color  = player and player.color or ""
+    for _, s in ipairs(strats) do
+        if #stratagems < MAX_STRATAGEMS then
+            stratagems[#stratagems + 1] = {
+                name        = s.name,
+                cp          = s.cp,
+                phase       = s.phase,
+                desc        = s.desc,
+                playerColor = color,
+            }
+            sAdded = sAdded + 1
+        end
+    end
+    if sAdded > 0 then
+        refreshStrategemsUI()
+        Wait.frames(function() respawnAllPhysicalStratagems() end, 2)
+    end
+    local msg = "✓ " .. uAdded .. " unit" .. (uAdded == 1 and "" or "s") ..
+                "  +  " .. sAdded .. " stratagem" .. (sAdded == 1 and "" or "s") .. " imported"
+    if uAdded == 0 and sAdded == 0 then
+        msg = "✗ Nothing found — check this is a valid BattleScribe .ros export"
+    end
+    UI.setAttribute("nr_status", "text", msg)
+    log("[NR Import] " .. msg)
+end
+
 function ysSetUnit()
     local name   = UI.getValue("ys_unit_name_input")
     local wpm    = tonumber(UI.getValue("ys_unit_wounds_input"))
@@ -2041,6 +2328,10 @@ function onChat(message, player)
         toggleStrategemsPanel()
         return false
 
+    elseif cmd == "!import" then
+        toggleImportPanel()
+        return false
+
     elseif cmd == "!history" then
         if #rollHistory == 0 then
             printToColor("No rolls yet.", player.color, {r=0.7,g=0.7,b=0.7})
@@ -2128,6 +2419,7 @@ function onChat(message, player)
             "!history                     — last 10 rolls",
             "!hostonly on|off             — lock controls to host only (host only)",
             "!strats                      — open the Stratagems panel",
+            "!import                      — open New Recruit / BattleScribe import panel",
             "!scale <pct>                 — scale all Custom_Model minis (e.g. !scale 75)",
             "!tables                      — respawn player side tables",
             "!cleartables                 — remove player side tables",
@@ -2419,7 +2711,7 @@ local function buildXml(ftcMode)
 <!-- ══════════════════════════════════════════════════════════════════
      MAIN TOOLBAR  (always visible, draggable)
      ══════════════════════════════════════════════════════════════════ -->
-<HorizontalLayout id="toolbar" position="%s" width="824" height="46"
+<HorizontalLayout id="toolbar" position="%s" width="900" height="46"
                   color="#12121e" padding="4 4 4 4" spacing="3"
                   allowDragging="true">
 
@@ -2472,6 +2764,10 @@ local function buildXml(ftcMode)
   <!-- Stratagems -->
   <Button text="⚡ Strats" fontSize="12" color="#1e2a3a" textColor="#f4a261"
           width="68" onClick="toggleStrategemsPanel" />
+
+  <!-- New Recruit / BattleScribe import -->
+  <Button text="📥 Import" fontSize="12" color="#1e2a3a" textColor="#88ee88"
+          width="68" onClick="toggleImportPanel" />
 
   <!-- Host-only badge (hidden when off) -->
   <Text id="host_lock_badge" text="🔒 HOST" fontSize="11" fontStyle="Bold"
@@ -3080,6 +3376,31 @@ local function buildXml(ftcMode)
               fontSize="11" color="#ccaaff" alignment="MiddleLeft" height="15" />
         <Text text="📜 Rules — Yelloscribe in-game rules browser"
               fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="⚖ Scale — scale all Custom_Model minis 100/75/50%"
+              fontSize="11" color="#a0d8ef" alignment="MiddleLeft" height="15" />
+        <Text text="⚡ Strats — stratagem list + notecard spawner"
+              fontSize="11" color="#f4a261" alignment="MiddleLeft" height="15" />
+        <Text text="📥 Import — paste BattleScribe XML to import units + strats from New Recruit"
+              fontSize="11" color="#88ee88" alignment="MiddleLeft" height="15" />
+
+        <!-- ── NEW RECRUIT / BATTLESCRIBE IMPORT ─────────────────── -->
+        <Text text=" " fontSize="6" height="4" />
+        <Text text="── 📥 NEW RECRUIT IMPORT ──" fontSize="12" fontStyle="Bold"
+              color="#88ee88" alignment="MiddleCenter" height="20" />
+        <Text text="Export your army list from New Recruit as BattleScribe (.ros)."
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="Open the .ros file in any text editor, select all, copy, paste into"
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="the 📥 Import panel, then click Import Units / Import Strats."
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="Import Units — reads W + model count from datasheet profiles."
+              fontSize="11" color="#88ee88" alignment="MiddleLeft" height="15" />
+        <Text text="Import Strats — reads Stratagem profiles: name, CP, When, Effect."
+              fontSize="11" color="#f4a261" alignment="MiddleLeft" height="15" />
+        <Text text="Import All — runs both parsers in one click."
+              fontSize="11" color="#4fc3f7" alignment="MiddleLeft" height="15" />
+        <Text text="Chat:  !import — open the panel"
+              fontSize="11" color="#88ee88" alignment="MiddleLeft" height="15" />
 
         <!-- ── DICE ROLLER ─────────────────────────────────────── -->
         <Text text=" " fontSize="6" height="4" />
@@ -3351,6 +3672,66 @@ local function buildXml(ftcMode)
         %s
       </VerticalLayout>
     </ScrollView>
+
+  </VerticalLayout>
+</Panel>
+
+
+<!-- ══════════════════════════════════════════════════════════════════
+     NEW RECRUIT / BATTLESCRIBE IMPORT PANEL
+     ══════════════════════════════════════════════════════════════════ -->
+<Panel id="import_panel" active="false"
+       position="0 60 0" width="560" height="460"
+       color="#0d110d" allowDragging="true"
+       showAnimation="Grow" hideAnimation="Shrink">
+  <VerticalLayout padding="10 10 10 10" spacing="6">
+
+    <!-- Header -->
+    <HorizontalLayout height="32" spacing="4">
+      <Text text="📥 New Recruit / BattleScribe Import" fontSize="14" fontStyle="Bold"
+            color="#88ee88" alignment="MiddleLeft" flexibleWidth="1" />
+      <Button text="✕" fontSize="13" color="#0d110d" textColor="#aaaacc"
+              width="30" height="30" onClick="toggleImportPanel" />
+    </HorizontalLayout>
+
+    <!-- Instructions -->
+    <Text text="1. In New Recruit → open your list → Export → BattleScribe (.ros)"
+          fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+    <Text text="2. Open the .ros file in a text editor, select all, copy."
+          fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+    <Text text="3. Paste below and click the import button(s)."
+          fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+
+    <!-- Paste area -->
+    <InputField id="nr_xml_input"
+                placeholder="&lt;?xml version=&quot;1.0&quot;...&gt;  Paste BattleScribe XML here"
+                fontSize="11" height="190"
+                lineType="MultiLineNewline" />
+
+    <!-- Import buttons -->
+    <HorizontalLayout height="34" spacing="5">
+      <Button text="🧬 Import Units" fontSize="12"
+              color="#0a1a0a" textColor="#88ee88"
+              flexibleWidth="1" height="34" onClick="nrImportUnits" />
+      <Button text="⚡ Import Strats" fontSize="12"
+              color="#1a0e00" textColor="#f4a261"
+              flexibleWidth="1" height="34" onClick="nrImportStrats" />
+      <Button text="🧬+⚡ Import All" fontSize="12"
+              color="#111a1a" textColor="#4fc3f7"
+              flexibleWidth="1" height="34" onClick="nrImportAll" />
+    </HorizontalLayout>
+
+    <!-- Status / feedback -->
+    <Text id="nr_status"
+          text="Paste BattleScribe XML above, then choose what to import."
+          fontSize="11" color="#666688" alignment="MiddleCenter" height="14" />
+
+    <!-- Quick tips -->
+    <Text text=" " fontSize="4" height="4" />
+    <Text text="Units → fills the ❤ HP wound tracker.   Strats → fills the ⚡ Strats panel."
+          fontSize="10" color="#444466" alignment="MiddleCenter" height="13" />
+    <Text text="W (wounds/model) and model count are read from the datasheet profile."
+          fontSize="10" color="#444466" alignment="MiddleCenter" height="13" />
 
   </VerticalLayout>
 </Panel>

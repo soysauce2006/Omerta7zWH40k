@@ -92,21 +92,23 @@ local pendingUnit  = nil  -- kept for API compat
 -- teamConfig.activeTeam — index of the team currently taking their turn.
 -- Advances when a full set of 6 phases completes.
 
-local TEAM_MODES = { "ffa", "2v1", "2v2", "3v2", "3v3" }
+local TEAM_MODES = { "ffa", "2v1", "2v2", "3v2", "3v3", "3team" }
 
 local TEAM_DEFAULTS = {
-    { name = "Team Alpha", color = "#e63946" },  -- red
-    { name = "Team Bravo", color = "#2dc653" },  -- green
+    { name = "Team Alpha",   color = "#e63946" },  -- red
+    { name = "Team Bravo",   color = "#2dc653" },  -- green
+    { name = "Team Charlie", color = "#4fc3f7" },  -- blue
 }
 
--- Sizes for each mode: { teamA_size, teamB_size }
+-- Sizes for each mode: { teamA_size, teamB_size [, teamC_size] }
 local MODE_SIZES = {
-    ["ffa"] = nil,        -- computed from seated player count
-    ["2v1"] = {2, 1},
-    ["2v1r"]= {1, 2},     -- internal alias (1 vs 2)
-    ["2v2"] = {2, 2},
-    ["3v2"] = {3, 2},
-    ["3v3"] = {3, 3},
+    ["ffa"]   = nil,        -- computed from seated player count
+    ["2v1"]   = {2, 1},
+    ["2v1r"]  = {1, 2},     -- internal alias (1 vs 2)
+    ["2v2"]   = {2, 2},
+    ["3v2"]   = {3, 2},
+    ["3v3"]   = {3, 3},
+    ["3team"] = {2, 2, 2},  -- three factions, 2 players each
 }
 
 local teamConfig = {
@@ -519,26 +521,37 @@ local function refreshTeamUI()
             active and "White" or "#aaaacc")
     end
 
-    -- Team columns (only shown for non-FFA modes)
-    local showTeams = (teamConfig.mode ~= "ffa")
-    UI.setAttribute("tm_team_columns", "active", showTeams and "true" or "false")
-    UI.setAttribute("tm_ffa_info",     "active", showTeams and "false" or "true")
+    local isFFA    = (teamConfig.mode == "ffa")
+    local is3Team  = (teamConfig.mode == "3team")
+    local showTeams = not isFFA
 
-    -- Team 1 / Team 2 player lists
-    for ti = 1, 2 do
+    -- Show/hide the main column block and FFA block
+    UI.setAttribute("tm_team_columns", "active", showTeams and "true" or "false")
+    UI.setAttribute("tm_ffa_info",     "active", isFFA     and "true" or "false")
+
+    -- Show/hide the third team column, its VS separator, and its assign button
+    UI.setAttribute("tm_t3_col",    "active", is3Team and "true" or "false")
+    UI.setAttribute("tm_vs2",       "active", is3Team and "true" or "false")
+    UI.setAttribute("tm_t3_assign", "active", is3Team and "true" or "false")
+
+    -- Widen panel for 3-team so the three columns breathe
+    UI.setAttribute("teams_panel", "width", is3Team and "580" or "430")
+
+    -- Update all three team columns
+    for ti = 1, 3 do
         local t = teamConfig.teams[ti]
         if t then
             local pStr = #t.players > 0
                 and table.concat(t.players, ", ")
                 or  "(none)"
-            UI.setAttribute("tm_t" .. ti .. "_name",    "text", t.name)
-            UI.setAttribute("tm_t" .. ti .. "_players", "text", pStr)
+            UI.setAttribute("tm_t" .. ti .. "_name",    "text",  t.name)
+            UI.setAttribute("tm_t" .. ti .. "_players", "text",  pStr)
             UI.setAttribute("tm_t" .. ti .. "_name",    "color", t.color)
         end
     end
 
     -- FFA list
-    if teamConfig.mode == "ffa" then
+    if isFFA then
         local lines = {}
         for i, t in ipairs(teamConfig.teams) do
             local marker = (i == teamConfig.activeTeam) and "▶ " or "  "
@@ -574,7 +587,7 @@ function setTeamMode(modeStr)
         if m == modeStr then valid = true break end
     end
     if not valid then
-        log("Unknown mode '" .. modeStr .. "'. Valid: ffa 2v1 2v2 3v2 3v3")
+        log("Unknown mode '" .. modeStr .. "'. Valid: ffa 2v1 2v2 3v2 3v3 3team")
         return
     end
 
@@ -601,9 +614,10 @@ function setTeamMode(modeStr)
             teamConfig.teams = { { name="Army 1", color="#aaaacc", players={} } }
         end
     else
-        -- 2-team mode: split players by mode sizes
+        -- Structured team mode: create exactly as many teams as there are size entries
         local sizes = MODE_SIZES[modeStr] or {2, 2}
-        for ti, def in ipairs(TEAM_DEFAULTS) do
+        for ti = 1, #sizes do
+            local def = TEAM_DEFAULTS[ti] or { name = "Team " .. ti, color = "#aaaacc" }
             teamConfig.teams[ti] = {
                 name    = def.name,
                 color   = def.color,
@@ -1379,7 +1393,7 @@ function onChat(message, player)
         local mode = args:match("%S+")
         if not mode then
             printToColor(
-                "Usage: !setmode <mode>  —  modes: ffa  2v1  2v2  3v2  3v3\n"..
+                "Usage: !setmode <mode>  —  modes: ffa  2v1  2v2  3v2  3v3  3team\n"..
                 "Auto-assigns seated players.  Use Teams panel to reassign.",
                 player.color, {r=1,g=0.5,b=0})
             return false
@@ -1404,7 +1418,7 @@ function onChat(message, player)
             "!wound  \"Name\" <amount>     — deal wounds to unit",
             "!heal   \"Name\" <amount>     — heal wounds on unit",
             ftcLine,
-            "!setmode <mode>              — set match format: ffa 2v1 2v2 3v2 3v3",
+            "!setmode <mode>              — set match format: ffa 2v1 2v2 3v2 3v3 3team",
             "!teams                       — show current team setup",
             "!next / !prev                — advance/retreat turn phase (cycles armies)",
             "!turn                        — show current phase",
@@ -1929,21 +1943,24 @@ local function buildXml(ftcMode)
     <HorizontalLayout height="34" spacing="3">
       <Text text="Mode:" fontSize="13" color="#aaaacc"
             alignment="MiddleLeft" width="46" />
-      <Button id="tm_btn_ffa" text="FFA"  fontSize="13"
+      <Button id="tm_btn_ffa"    text="FFA"    fontSize="12"
               color="#2d2d44" textColor="#aaaacc" flexibleWidth="1"
               onClick="setTeamMode|ffa" />
-      <Button id="tm_btn_2v1" text="2v1"  fontSize="13"
+      <Button id="tm_btn_2v1"    text="2v1"    fontSize="12"
               color="#2d2d44" textColor="#aaaacc" flexibleWidth="1"
               onClick="setTeamMode|2v1" />
-      <Button id="tm_btn_2v2" text="2v2"  fontSize="13"
+      <Button id="tm_btn_2v2"    text="2v2"    fontSize="12"
               color="#2d2d44" textColor="#aaaacc" flexibleWidth="1"
               onClick="setTeamMode|2v2" />
-      <Button id="tm_btn_3v2" text="3v2"  fontSize="13"
+      <Button id="tm_btn_3v2"    text="3v2"    fontSize="12"
               color="#2d2d44" textColor="#aaaacc" flexibleWidth="1"
               onClick="setTeamMode|3v2" />
-      <Button id="tm_btn_3v3" text="3v3"  fontSize="13"
+      <Button id="tm_btn_3v3"    text="3v3"    fontSize="12"
               color="#2d2d44" textColor="#aaaacc" flexibleWidth="1"
               onClick="setTeamMode|3v3" />
+      <Button id="tm_btn_3team"  text="3-Team" fontSize="12"
+              color="#2d2d44" textColor="#aaaacc" flexibleWidth="1"
+              onClick="setTeamMode|3team" />
     </HorizontalLayout>
 
     <!-- Auto-assign -->
@@ -1995,6 +2012,27 @@ local function buildXml(ftcMode)
         <Button text="✎ Rename" fontSize="12" color="#2d2d44" textColor="#aaaacc"
                 height="26" onClick="renameTeam|2" />
       </VerticalLayout>
+
+      <!-- Second VS separator — only visible in 3-team mode -->
+      <Text id="tm_vs2" text="VS" fontSize="16" fontStyle="Bold" color="#555566"
+            alignment="MiddleCenter" width="28" active="false" />
+
+      <!-- Team 3 column — only visible in 3-team mode -->
+      <VerticalLayout id="tm_t3_col" flexibleWidth="1" spacing="4" color="#001a2a"
+                      padding="6 6 4 4" active="false">
+        <Text id="tm_t3_name" text="Team Charlie" fontSize="14"
+              fontStyle="Bold" color="#4fc3f7" alignment="MiddleCenter"
+              height="22" />
+        <Text text="Players:" fontSize="11" color="#888899"
+              alignment="MiddleCenter" height="14" />
+        <Text id="tm_t3_players" text="(none)" fontSize="13"
+              color="#aaddff" alignment="MiddleCenter" flexibleHeight="1" />
+        <!-- Rename -->
+        <InputField id="tm_t3_name_input" placeholder="Rename Team 3…"
+                    fontSize="12" height="26" />
+        <Button text="✎ Rename" fontSize="12" color="#2d2d44" textColor="#aaaacc"
+                height="26" onClick="renameTeam|3" />
+      </VerticalLayout>
     </HorizontalLayout>
 
     <!-- ─── FFA ARMY LIST (shown in FFA mode) ─── -->
@@ -2016,6 +2054,9 @@ local function buildXml(ftcMode)
               width="48" height="26" onClick="assignToTeam|1" />
       <Button text="→ T2" fontSize="12" color="#0a3a15" textColor="#aaffaa"
               width="48" height="26" onClick="assignToTeam|2" />
+      <Button id="tm_t3_assign" text="→ T3" fontSize="12"
+              color="#0a2040" textColor="#aaddff"
+              width="48" height="26" onClick="assignToTeam|3" active="false" />
     </HorizontalLayout>
 
     <!-- ─── Active army row ─── -->

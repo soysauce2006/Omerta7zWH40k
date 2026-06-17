@@ -40,8 +40,15 @@
 ------------------------------------------------------------------------
 -- CONFIG
 ------------------------------------------------------------------------
-local MAX_HISTORY = 20
-local MAX_UNITS   = 12
+local MAX_HISTORY   = 20
+local MAX_UNITS     = 12
+local MAX_DATACARDS = 10
+
+------------------------------------------------------------------------
+-- DATA CARDS STATE
+------------------------------------------------------------------------
+-- Each entry: { name, faction, M, T, Sv, W, Ld, OC, notes }
+local dataCards = {}
 
 ------------------------------------------------------------------------
 -- FTC COMPATIBILITY STATE
@@ -1205,6 +1212,90 @@ end
 function openYelloscribe()   UI.show("yelloscribe_panel")  end
 function closeYelloscribe()  UI.hide("yelloscribe_panel")  end
 
+-- ── Data Cards ────────────────────────────────────────────────────────
+
+-- Read the current Yelloscribe URL and pre-fill the unit name field
+-- by converting the last URL path segment from slug to title case.
+function pinCurrentYelloscribePage()
+    local url  = UI.getAttribute("ys_browser", "url") or ""
+    local slug = url:match("/([^/?#]+)%s*$") or ""
+    -- Ignore root / domain segments that aren't unit names
+    if slug ~= "" and not slug:find("%.") and slug ~= "yelloscribe.com" then
+        local name = slug:gsub("[%-_]+", " ")
+                        :gsub("(%a)([%a]*)", function(a, b)
+                            return a:upper() .. b:lower()
+                         end)
+        UI.setValue("dc_name_input", name)
+    end
+end
+
+function saveDataCard()
+    local name = UI.getValue("dc_name_input")
+    if not name or name == "" then
+        log("Enter a unit name before saving a data card.")
+        return
+    end
+    if #dataCards >= MAX_DATACARDS then
+        log("Data card limit (" .. MAX_DATACARDS .. ") reached — remove one first.")
+        return
+    end
+    dataCards[#dataCards + 1] = {
+        name    = name,
+        faction = UI.getValue("dc_faction_input") or "",
+        M       = UI.getValue("dc_M_input")       or "",
+        T       = UI.getValue("dc_T_input")       or "",
+        Sv      = UI.getValue("dc_Sv_input")      or "",
+        W       = UI.getValue("dc_W_input")       or "",
+        Ld      = UI.getValue("dc_Ld_input")      or "",
+        OC      = UI.getValue("dc_OC_input")      or "",
+        notes   = UI.getValue("dc_notes_input")   or "",
+    }
+    for _, id in ipairs({ "dc_name_input","dc_faction_input","dc_M_input",
+                          "dc_T_input","dc_Sv_input","dc_W_input",
+                          "dc_Ld_input","dc_OC_input","dc_notes_input" }) do
+        UI.setValue(id, "")
+    end
+    refreshDataCardsUI()
+    log("📋 Data card pinned: " .. name)
+end
+
+function removeDataCard(slotStr)
+    local slot = tonumber(slotStr)   -- 0-based slot from XML onClick
+    if not slot then return end
+    local idx = slot + 1             -- Lua 1-based index
+    if dataCards[idx] then
+        local n = dataCards[idx].name
+        table.remove(dataCards, idx)
+        refreshDataCardsUI()
+        log("📋 Removed data card: " .. n)
+    end
+end
+
+function refreshDataCardsUI()
+    for i = 0, MAX_DATACARDS - 1 do
+        local dc = dataCards[i + 1]
+        if dc then
+            local function val(v) return (v and v ~= "") and v or "?" end
+            local stats = "M " .. val(dc.M)  ..
+                         "  T " .. val(dc.T)  ..
+                         "  Sv " .. val(dc.Sv) ..
+                         "  W " .. val(dc.W)  ..
+                         "  Ld " .. val(dc.Ld) ..
+                         "  OC " .. val(dc.OC)
+            UI.setAttribute("dc_slot_" .. i,              "active", "true")
+            UI.setAttribute("dc_slot_" .. i .. "_name",    "text",   dc.name)
+            UI.setAttribute("dc_slot_" .. i .. "_stats",   "text",   stats)
+            UI.setAttribute("dc_slot_" .. i .. "_faction", "text",   dc.faction)
+        else
+            UI.setAttribute("dc_slot_" .. i, "active", "false")
+        end
+    end
+    local n = #dataCards
+    UI.setAttribute("dc_status", "text",
+        n > 0 and (n .. " card" .. (n == 1 and "" or "s") .. " pinned")
+              or "No cards pinned yet — browse Yelloscribe and click Pin")
+end
+
 function ysSetUnit()
     local name   = UI.getValue("ys_unit_name_input")
     local wpm    = tonumber(UI.getValue("ys_unit_wounds_input"))
@@ -1588,6 +1679,31 @@ function mrLostDn()  stepField("mr_lost", -1, 0, 20) end
 ------------------------------------------------------------------------
 -- UI XML
 ------------------------------------------------------------------------
+-- Pre-build MAX_DATACARDS empty card slots for the Yelloscribe sidebar.
+-- refreshDataCardsUI() shows/hides and fills them at runtime.
+local function buildDataCardSlots()
+    local rows = ""
+    for i = 0, MAX_DATACARDS - 1 do
+        rows = rows .. string.format([[
+<Panel id="dc_slot_%d" active="false" height="72" color="#14142a" padding="4 4 3 3">
+  <HorizontalLayout spacing="2">
+    <VerticalLayout flexibleWidth="1" spacing="0">
+      <Text id="dc_slot_%d_name"    text="" fontSize="12" fontStyle="Bold"
+            color="#f0c060" height="17" alignment="MiddleLeft" />
+      <Text id="dc_slot_%d_stats"   text="" fontSize="10"
+            color="#aaaacc" height="13" alignment="MiddleLeft" />
+      <Text id="dc_slot_%d_faction" text="" fontSize="10"
+            color="#7788aa" height="13" alignment="MiddleLeft" />
+    </VerticalLayout>
+    <Button text="✕" fontSize="11" color="#2a0808" textColor="#ff8888"
+            width="22" height="22" onClick="removeDataCard|%d" />
+  </HorizontalLayout>
+</Panel>
+]], i, i, i, i, i)
+    end
+    return rows
+end
+
 local function buildWoundRows()
     local rows = ""
     for i = 1, MAX_UNITS do
@@ -2152,6 +2268,8 @@ local function buildXml(ftcMode)
     <HorizontalLayout height="46" color="#e63946" padding="8 8 4 4" spacing="6">
       <Text text="📜 Yelloscribe — WH40K Rules Lookup" fontSize="19"
             fontStyle="Bold" color="White" alignment="MiddleLeft" flexibleWidth="1" />
+      <Button text="📋 Pin from URL" fontSize="13" color="#3a2800" textColor="#f0c060"
+              width="112" height="36" onClick="pinCurrentYelloscribePage" />
       <Button text="✕" fontSize="18" color="#c1121f" textColor="White"
               width="40" height="40" onClick="closeYelloscribe" />
     </HorizontalLayout>
@@ -2172,8 +2290,73 @@ local function buildXml(ftcMode)
       <Button text="✚ Track" fontSize="13" color="#2dc653" textColor="White"
               width="78" height="28" onClick="ysSetUnit" />
     </HorizontalLayout>
-    <WebBrowser id="ys_browser" url="https://www.yelloscribe.com"
-                width="940" height="654" />
+
+    <!-- Browser + Data Cards sidebar -->
+    <HorizontalLayout spacing="0" height="654">
+      <WebBrowser id="ys_browser" url="https://www.yelloscribe.com"
+                  width="628" flexibleHeight="1" />
+
+      <!-- ── Data Cards sidebar ───────────────────────────────────────── -->
+      <VerticalLayout width="312" color="#0a0a14" padding="5 5 5 5" spacing="3">
+
+        <Text text="📋 Data Cards" fontSize="13" fontStyle="Bold"
+              color="#f0c060" alignment="MiddleCenter" height="19" />
+
+        <!-- Unit name + faction -->
+        <InputField id="dc_name_input" placeholder="Unit name  (auto-fills from URL)"
+                    fontSize="12" height="26" />
+        <InputField id="dc_faction_input" placeholder="Faction"
+                    fontSize="12" height="24" />
+
+        <!-- Stat row 1: M  T  Sv -->
+        <HorizontalLayout height="26" spacing="2">
+          <Text text="M"  fontSize="11" color="#888899" alignment="MiddleCenter" width="14" />
+          <InputField id="dc_M_input"  placeholder='6"' fontSize="12" flexibleWidth="1" height="26" />
+          <Text text="T"  fontSize="11" color="#888899" alignment="MiddleCenter" width="14" />
+          <InputField id="dc_T_input"  placeholder="4"  fontSize="12" flexibleWidth="1" height="26"
+                      characterValidation="Integer" />
+          <Text text="Sv" fontSize="11" color="#888899" alignment="MiddleCenter" width="18" />
+          <InputField id="dc_Sv_input" placeholder="3+" fontSize="12" flexibleWidth="1" height="26" />
+        </HorizontalLayout>
+
+        <!-- Stat row 2: W  Ld  OC -->
+        <HorizontalLayout height="26" spacing="2">
+          <Text text="W"  fontSize="11" color="#888899" alignment="MiddleCenter" width="14" />
+          <InputField id="dc_W_input"  placeholder="2"  fontSize="12" flexibleWidth="1" height="26"
+                      characterValidation="Integer" />
+          <Text text="Ld" fontSize="11" color="#888899" alignment="MiddleCenter" width="18" />
+          <InputField id="dc_Ld_input" placeholder="6+" fontSize="12" flexibleWidth="1" height="26" />
+          <Text text="OC" fontSize="11" color="#888899" alignment="MiddleCenter" width="18" />
+          <InputField id="dc_OC_input" placeholder="2"  fontSize="12" flexibleWidth="1" height="26"
+                      characterValidation="Integer" />
+        </HorizontalLayout>
+
+        <InputField id="dc_notes_input" placeholder="Special abilities / notes…"
+                    fontSize="11" height="24" />
+
+        <!-- Action buttons -->
+        <HorizontalLayout height="28" spacing="3">
+          <Button text="📋 Pin from URL" fontSize="11" color="#1a1400" textColor="#f0c060"
+                  flexibleWidth="1" height="28" onClick="pinCurrentYelloscribePage" />
+          <Button text="✚ Save Card" fontSize="11" color="#0a1a0a" textColor="#88ee88"
+                  flexibleWidth="1" height="28" onClick="saveDataCard" />
+        </HorizontalLayout>
+
+        <Text text="────────────────" fontSize="9" color="#2a2a44"
+              alignment="MiddleCenter" height="10" />
+
+        <Text id="dc_status" text="No cards pinned yet"
+              fontSize="10" color="#555577" alignment="MiddleCenter" height="13" />
+
+        <!-- Scrollable list of pinned cards -->
+        <ScrollView flexibleHeight="1" scrollSensitivity="30">
+          <VerticalLayout spacing="3">
+            %s
+          </VerticalLayout>
+        </ScrollView>
+
+      </VerticalLayout>
+    </HorizontalLayout>
   </VerticalLayout>
 </Panel>
 
@@ -2393,7 +2576,7 @@ local function buildXml(ftcMode)
               fontSize="11" color="#f4d35e" alignment="MiddleLeft" height="15" />
         <Text text="!turn                          — show current phase"
               fontSize="11" color="#f4d35e" alignment="MiddleLeft" height="15" />
-        <Text text="!yelloscribe                   — open rules browser"
+        <Text text="!yelloscribe                   — open rules browser + data cards"
               fontSize="11" color="#f4d35e" alignment="MiddleLeft" height="15" />
         <Text text="!history                       — last 10 rolls"
               fontSize="11" color="#f4d35e" alignment="MiddleLeft" height="15" />
@@ -2438,7 +2621,9 @@ local function buildXml(ftcMode)
     -- 8: FTC badge in wound tracker header
     ftcBadge,
     -- 9: wound tracker unit rows
-    buildWoundRows()
+    buildWoundRows(),
+    -- 10: Yelloscribe data card slots
+    buildDataCardSlots()
     )
 end
 
@@ -2494,6 +2679,9 @@ function onLoad(save_state)
                 teamConfig.activeTeam = data.teamConfig.activeTeam or 1
                 teamConfig.teams      = data.teamConfig.teams      or {}
             end
+            if data.dataCards then
+                dataCards = data.dataCards
+            end
         end
     end
 
@@ -2509,6 +2697,7 @@ function onLoad(save_state)
         refreshTurnUI()
         refreshWoundUI()
         refreshTeamUI()
+        refreshDataCardsUI()
         log("WH40K mod ready. Type !help for commands.")
     end, 0.5)
 end
@@ -2519,5 +2708,6 @@ function onSave()
         woundTracker = woundTracker,
         turnState    = turnState,
         teamConfig   = teamConfig,
+        dataCards    = dataCards,
     })
 end

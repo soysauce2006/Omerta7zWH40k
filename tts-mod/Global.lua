@@ -2356,23 +2356,9 @@ function nrImportUnits(player)
         return
     end
     local color = player and player.color or ""
-    -- Wound tracker
-    local wtAdded, wtSkipped = 0, 0
-    for _, u in ipairs(units) do
-        if #woundTracker < MAX_UNITS then
-            addUnit(u.name, u.woundsPerModel, u.models)
-            wtAdded = wtAdded + 1
-        else
-            wtSkipped = wtSkipped + 1
-        end
-    end
-    -- Data cards
     local dcAdded, dcSkipped = nrAddDataCards(units, color)
-    local msg = string.format("✓ %d unit%s → HP tracker + %d data card%s",
-        wtAdded, wtAdded == 1 and "" or "s",
-        dcAdded, dcAdded == 1 and "" or "s")
-    if wtSkipped > 0 then msg = msg .. "  (" .. wtSkipped .. " tracker slots full)" end
-    if dcSkipped > 0 then msg = msg .. "  (" .. dcSkipped .. " card slots full)" end
+    local msg = string.format("✓ %d data card%s imported", dcAdded, dcAdded == 1 and "" or "s")
+    if dcSkipped > 0 then msg = msg .. "  (" .. dcSkipped .. " skipped — card slots full)" end
     UI.setAttribute("nr_status", "text", msg)
     log("[NR Import] " .. msg)
 end
@@ -2424,16 +2410,9 @@ function nrImportAll(player)
         return
     end
     local color = player and player.color or ""
-    -- Units → wound tracker + data cards
-    local units  = parseBSUnits(xml)
-    local uAdded = 0
-    for _, u in ipairs(units) do
-        if #woundTracker < MAX_UNITS then
-            addUnit(u.name, u.woundsPerModel, u.models)
-            uAdded = uAdded + 1
-        end
-    end
-    local dcAdded = (nrAddDataCards(units, color))
+    -- Units → data cards only (HP tracking handled by ForgeOrg)
+    local units   = parseBSUnits(xml)
+    local dcAdded = nrAddDataCards(units, color)
     -- Stratagems
     local strats = parseBSStratagems(xml)
     local sAdded = 0
@@ -2453,16 +2432,14 @@ function nrImportAll(player)
         refreshStrategemsUI()
         Wait.frames(function() respawnAllPhysicalStratagems() end, 2)
     end
-    if uAdded == 0 and sAdded == 0 then
+    if dcAdded == 0 and sAdded == 0 then
         UI.setAttribute("nr_status", "text",
             "✗ Nothing found — check this is a valid BattleScribe .ros export")
         return
     end
-    local msg = string.format(
-        "✓ %d unit%s → HP tracker + %d data card%s  ·  %d stratagem%s",
-        uAdded,   uAdded  == 1 and "" or "s",
-        dcAdded,  dcAdded == 1 and "" or "s",
-        sAdded,   sAdded  == 1 and "" or "s")
+    local msg = string.format("✓ %d data card%s  ·  %d stratagem%s",
+        dcAdded, dcAdded == 1 and "" or "s",
+        sAdded,  sAdded  == 1 and "" or "s")
     UI.setAttribute("nr_status", "text", msg)
     log("[NR Import] " .. msg)
 end

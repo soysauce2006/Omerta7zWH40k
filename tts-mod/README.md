@@ -18,14 +18,16 @@ Paste `Global.lua` into your table's Global Lua Script slot and everything below
 | 👥 Teams | Match Formats | FFA / 2v1 / 2v2 / 3v2 / 3v3 / 3-Team |
 | 📜 Rules | Yelloscribe | In-game browser + data card sidebar |
 | ⚖ Scale | Model Scale | Scale all minis 100% / 75% / 50% |
+| 🪑 Tables | Player Tables | Spawn / clear per-player side tables |
 | ❓ Help | Help Panel | Scrollable in-game command reference |
 | ⚙ FTC | FTC Import | Free the Codex integration (auto-detected) |
 
 Additional features with no toolbar button:
 
-- **Player Side Tables** — colour-coded mats around the play area, one per seat
 - **Physical Data Cards** — Notecard objects spawned on each player's side table
+- **Stratagems** — Notecard objects for stratagem reference cards
 - **Host-Only Mode** — lock all mod controls to the server owner
+- **Surrender** — players can concede; staged models, cards & stratagems are removed
 
 ---
 
@@ -86,6 +88,15 @@ TABLES
   !tables                     — respawn player side tables
   !cleartables                — remove player side tables
 
+STRATAGEMS
+  !strats                     — open the Stratagems panel
+
+IMPORT
+  !import                     — open New Recruit / BattleScribe import panel
+
+SURRENDER
+  !surrender                  — open surrender confirmation panel
+
 HOST
   !hostonly on | off          — lock controls to server host only (host only)
 
@@ -122,13 +133,37 @@ HP badge format: `4/5×2W` = 4 wounds remaining on front model, 1 of 2 models le
 
 ## Model Scaling
 
-The **⚖ Scale** panel (or `!scale <pct>`) resizes every `Custom_Model` object
-and any object tagged **Miniature** on the table.
+The **⚖ Scale** panel (or `!scale <pct>`) resizes every object tagged **Miniature**.
 
 - **100%** restores originals — original sizes are captured on first scale.
 - Scales from 1% to 200% via chat command.
 - System objects (side tables, data cards, dice mats) are never scaled.
+- **FTC mode:** only objects explicitly tagged `Miniature` are scaled — FTC's own unit
+  models (untagged `Custom_Model` objects) are left untouched.
 - Scale state persists across save/load.
+
+---
+
+## Player Side Tables
+
+Six colour-coded mats are placed around the play area, one per seat colour (White, Brown,
+Red, Orange, Green, Teal). Use the **🪑 Tables** toolbar button or `!tables` / `!cleartables`
+in chat.
+
+Physical data cards and stratagem notecards are spawned on each player's matching table.
+
+---
+
+## Surrender
+
+Any player can open the surrender confirmation via the **⚑ Yield** toolbar button or `!surrender` in chat.
+A confirmation panel appears — clicking **⚑ Confirm Surrender** will:
+
+- Remove all `Custom_Model` / `Miniature`-tagged objects within radius 14 of that player's side table (staged models)
+- Delete their data cards and stratagem notecards
+- Broadcast a surrender announcement to all seated players
+
+Deployed models on the main board must be removed manually — the chat message calls this out explicitly.
 
 ---
 
@@ -159,14 +194,53 @@ to pre-fill the unit name, then fill in stats and click **✚ Save Card**.
 
 ---
 
+## Stratagems
+
+Open the **⚡ Strats** toolbar button or type `!strats`.
+
+- Add stratagems manually or import them from BattleScribe XML via **📥 Import**.
+- Each stratagem spawns as an amber-tinted Notecard on the relevant player's side table.
+- Stratagems persist across save/load.
+
+---
+
 ## FTC Integration
 
-FTC is detected automatically at load time. When present:
+FTC (Free the Codex) is detected automatically at load time. When present:
 
 - Toolbar moves to the **bottom-right** corner (avoids FTC's left rail).
 - Turn Tracker hides; FTC owns phase/round control.
 - Teams panel syncs active army from FTC turn events.
 - An **⚙ FTC** button appears in the toolbar.
+- Model scaling only applies to objects tagged `Miniature` — FTC unit models are never rescaled.
+
+### Using Dice Mats alongside FTC
+
+FTC doesn't expose its dice mat objects via API, but you can wire up the auto-announce feature
+manually in two steps:
+
+1. In TTS, **right-click** each FTC dice tray / mat object → **Tags** → add `DiceMat`.
+2. Type `!tables` in chat (or click **🪑 Tables**) — the mod will place the side tables
+   and immediately move every `DiceMat`-tagged object onto the matching player's table,
+   one mat per seat, with the correct facing.
+
+From that point on, any dice rolled onto those mats will auto-announce results in chat.
+The mat names update automatically to show the seated player's Steam name.
+
+> **Tip:** If FTC and this mod are both announcing the same roll, your DiceMat object is
+> overlapping with FTC's own dice zone. Move the mat slightly so only one system detects it.
+
+---
+
+## BattleScribe / New Recruit Import
+
+Click **📥 Import** in the toolbar or type `!import`.
+
+Paste BattleScribe XML (exported from BattleScribe or New Recruit) into the text field, then click:
+
+- **Import Units** — adds all units to the Wound Tracker
+- **Import Strats** — adds all stratagems to the Strats panel and spawns notecards
+- **Import All** — both at once
 
 ---
 
@@ -179,5 +253,6 @@ Saved automatically with the TTS save file (`onSave` / `onLoad`):
 - Turn state (round, phase, active player)
 - Team configuration (mode, names, assignments)
 - Data cards (all fields + player colour)
+- Stratagems (all fields + player colour)
 - Model scale factor + original base scales
 - Host-only mode state

@@ -2884,6 +2884,10 @@ local function buildXml(ftcMode)
   <Button text="⚖ Scale" fontSize="12" color="#1e2a3a" textColor="#a0d8ef"
           width="68" onClick="toggleScalePanel" />
 
+  <!-- Player side tables -->
+  <Button text="🪑 Tables" fontSize="12" color="#1e2a3a" textColor="#c8b89a"
+          width="68" onClick="spawnSideTables" />
+
   <!-- Stratagems -->
   <Button text="⚡ Strats" fontSize="12" color="#1e2a3a" textColor="#f4a261"
           width="68" onClick="toggleStrategemsPanel" />

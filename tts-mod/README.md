@@ -238,9 +238,11 @@ Click **📥 Import** in the toolbar or type `!import`.
 
 Paste BattleScribe XML (exported from BattleScribe or New Recruit) into the text field, then click:
 
-- **Import Units** — adds all units to the Wound Tracker
-- **Import Strats** — adds all stratagems to the Strats panel and spawns notecards
-- **Import All** — both at once
+- **🧬 Import Units** — parses all units and creates fully-populated **data cards** (M, T, Sv, W, Ld, OC, faction extracted from the XML datasheet profile). Physical notecards are spawned on the importing player's side table. HP tracking is **not** handled here — use ForgeOrg or your preferred army manager for that.
+- **⚡ Import Strats** — adds all stratagems to the Strats panel and spawns amber notecards
+- **🧬+⚡ Import All** — runs both parsers in one click
+
+> **ForgeOrg users:** set ForgeOrg to handle unit HP import. This mod's import creates data reference cards only, so there is no double-counting.
 
 ---
 

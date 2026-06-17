@@ -7,6 +7,37 @@ Changes within each version are grouped by type.
 
 ---
 
+## [1.4.0] 2026-06-17 — BattleScribe Data Card Import & ForgeOrg Compatibility
+
+### Added
+- **BattleScribe stat extraction** — `parseBSUnits` now reads all six datasheet
+  profile stats (M, T, Sv, W, Ld, OC) and faction name from the XML, so imported
+  units arrive with fully populated data cards instead of name-only placeholders.
+- **`nrAddDataCards(units, color)`** helper — creates and physically spawns a data
+  card notecard for every imported unit; called by both Import Units and Import All.
+- **🌐 Fetch Stats from Page** button in the Yelloscribe data card sidebar — reads
+  the current browser URL and fetches unit stats directly from the page using a
+  multi-strategy parser (Next.js `__NEXT_DATA__`, generic SPA JSON blobs, HTML stat
+  table, short-key JSON). Fills M, T, Sv, W, Ld, OC fields automatically.
+
+### Changed
+- **Import Units** no longer writes to the Wound Tracker. HP tracking is delegated
+  to ForgeOrg (or whichever external mod the host uses). The button now creates data
+  cards only; status message updated to `✓ N data cards imported`.
+- **Import All** likewise skips the wound tracker loop; status now reads
+  `✓ N data cards  ·  N stratagems`.
+- Import panel status messages throughout updated to match.
+
+### Compatibility
+- **ForgeOrg** (Steam Workshop 3137407072) — no code conflicts. ForgeOrg has no
+  exported Lua API or shared globals; our mod does not touch its objects. Model
+  scaling (`!scale`) will affect any `Custom_Model` objects ForgeOrg spawns; tag
+  those objects `Miniature` to opt them in, or leave them untagged and add a
+  ForgeOrg guard to `isScalable()` once its global name is known.
+- **Battleforged model pack** — no conflicts (pure asset pack, no Lua scripts).
+
+---
+
 ## [1.3.0] 2026-06-17 — Toolbar Toggle
 
 ### Added

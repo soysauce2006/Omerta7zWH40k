@@ -7,6 +7,57 @@ Changes within each version are grouped by type.
 
 ---
 
+## [0.9.0] 2026-06-17 — Yelloscribe Stratagem Pin
+
+### Added
+- **⚡ Pin from URL** button in the Yelloscribe sidebar — reads the current browser
+  URL, converts the path slug to title case, and pre-fills the stratagem name field.
+  Same pattern as the existing 📋 Pin from URL for data cards.
+- **Stratagem sub-section** in the Yelloscribe sidebar — compact form (name, CP,
+  phase, description) sits directly below the data cards list so players never need
+  to leave the rules browser to save a strat.
+  - **✚ Save Strat** writes to the shared `stratagems[]` list, spawns the physical
+    notecard on the side table, clears the form, and updates both the Yelloscribe
+    status line and the standalone ⚡ Strats panel simultaneously.
+- `saveStratFromYS(player)` — dedicated save function for the sidebar form; shares
+  state and notecard spawner with the standalone panel.
+- `pinStratFromURL(player)` — URL-to-name parser targeting the sidebar name field.
+
+### Workflow
+1. Open **📜 Rules** (Yelloscribe panel).
+2. Browse to a stratagem page on yelloscribe.com.
+3. Click **⚡ Pin from URL** — name field fills automatically.
+4. Set CP (1–3) and phase; optionally add a description.
+5. Click **✚ Save Strat** — notecard appears on your side table.
+
+---
+
+## [0.8.0] 2026-06-17 — Stratagems System
+
+### Added
+- **⚡ Strats toolbar button** — opens the standalone Stratagems panel.
+- `!strats` chat command — same as clicking the toolbar button.
+- **Stratagems panel** (320 × 490 px, draggable, animate Grow/Shrink):
+  - Name, CP (1–3), Phase, and multi-line description input fields.
+  - **⚡ Add Stratagem** button — validates, saves, and spawns a notecard.
+  - Scrollable list of up to 20 saved stratagems; each slot shows name (bold
+    orange), CP + phase badge (gold), description, and a ✕ remove button.
+  - Status line reflects current count.
+- **Physical stratagem notecards** spawned on the player's side table at the far
+  end (Z offset +5.0 from table centre), distinct from data cards:
+  - Tinted amber (seat colour × 0.9/0.65/0.4) so they're visually separate.
+  - Notecard title = stratagem name; body = `[CP: N]  |  Phase\n\nDescription`.
+  - Tagged `WH40K_Stratagem` for targeted cleanup.
+  - 4 per row, same gap constants as data cards.
+- `clearPhysicalStratagems()` / `respawnAllPhysicalStratagems()` — mirrors data
+  card physical management; called 25 frames after load.
+- **Host-only gated** — `checkPerm` covers Add and Remove in both the standalone
+  panel and the Yelloscribe sidebar.
+- Stratagem list persists across save/load (`stratagems` key in save state).
+- Toolbar width increased 750 → 824 px to accommodate new button.
+
+---
+
 ## [0.7.0] 2026-06-17 — Host-Only Mode
 
 ### Added

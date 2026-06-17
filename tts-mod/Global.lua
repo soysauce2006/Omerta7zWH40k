@@ -45,6 +45,76 @@ local MAX_UNITS     = 12
 local MAX_DATACARDS = 30
 
 ------------------------------------------------------------------------
+-- MODEL SCALE STATE
+------------------------------------------------------------------------
+local modelScale      = 1.0   -- current factor (1.0 = 100%)
+local baseModelScales = {}    -- GUID → {x, y, z} original scales before any scaling
+
+------------------------------------------------------------------------
+-- MODEL SCALE FUNCTIONS
+------------------------------------------------------------------------
+-- Tags that identify system objects which must never be rescaled.
+local SCALE_EXCLUDE_TAGS = { "WH40K_SideTable", "WH40K_DataCard", "DiceMat" }
+
+local function isScalable(obj)
+    if obj.hasTag("Miniature") then return true end   -- explicit opt-in
+    if obj.type == "Custom_Model" then
+        for _, tag in ipairs(SCALE_EXCLUDE_TAGS) do
+            if obj.hasTag(tag) then return false end
+        end
+        return true
+    end
+    return false
+end
+
+-- Update the scale panel highlight buttons to reflect modelScale.
+function refreshScaleUI()
+    local pct = math.floor(modelScale * 100 + 0.5)
+    for _, p in ipairs({100, 75, 50}) do
+        local active = (p == pct)
+        UI.setAttribute("scale_btn_" .. p, "color",    active and "#4fc3f7" or "#1e2a3a")
+        UI.setAttribute("scale_btn_" .. p, "textColor", active and "#0a0a1a" or "#aaaacc")
+    end
+    UI.setAttribute("scale_status", "text", "Current: " .. pct .. "%")
+end
+
+-- Called by UI buttons: onClick="scaleAllModels|1.0" → (player, "1.0")
+-- Also callable directly: scaleAllModels(nil, 0.75)
+function scaleAllModels(player, factorStr)
+    local factor = tonumber(factorStr)
+    if not factor or factor <= 0 then
+        log("Usage: !scale <percent>  e.g. !scale 75")
+        return
+    end
+    local count = 0
+    for _, obj in ipairs(getAllObjects()) do
+        if isScalable(obj) then
+            local guid = obj.getGUID()
+            -- Record the pre-scaling size on first encounter so we can always
+            -- return to true 100% regardless of switching order.
+            if not baseModelScales[guid] then
+                local s = obj.getScale()
+                baseModelScales[guid] = { s.x, s.y, s.z }
+            end
+            local base = baseModelScales[guid]
+            obj.setScale({ base[1] * factor, base[2] * factor, base[3] * factor })
+            count = count + 1
+        end
+    end
+    modelScale = factor
+    refreshScaleUI()
+    log("⚖ Model scale: " .. math.floor(factor * 100 + 0.5) .. "% — " .. count .. " model(s) scaled.")
+end
+
+function toggleScalePanel()
+    if UI.getAttribute("scale_panel", "active") == "true" then
+        UI.hide("scale_panel")
+    else
+        UI.show("scale_panel")
+    end
+end
+
+------------------------------------------------------------------------
 -- PLAYER SIDE TABLES
 ------------------------------------------------------------------------
 -- Six side tables — one per player seat — placed around the play area.
@@ -1723,6 +1793,14 @@ function onChat(message, player)
         setTeamMode(mode)
         return false
 
+    elseif cmd == "!scale" then
+        local pct = tonumber(args[1])
+        if not pct or pct <= 0 or pct > 200 then
+            log("Usage: !scale <percent>  e.g. !scale 75  (valid: 1–200)")
+        else
+            scaleAllModels(player, pct / 100)
+        end
+        return false
     elseif cmd == "!tables" then
         spawnSideTables()
         if FTC_PRESENT then
@@ -1756,6 +1834,7 @@ function onChat(message, player)
             "!turn                        — show current phase",
             "!yelloscribe                 — open Yelloscribe panel",
             "!history                     — last 10 rolls",
+            "!scale <pct>                 — scale all Custom_Model minis (e.g. !scale 75)",
             "!tables                      — respawn player side tables",
             "!cleartables                 — remove player side tables",
             "!help                        — this message",
@@ -2017,7 +2096,7 @@ local function buildXml(ftcMode)
 <!-- ══════════════════════════════════════════════════════════════════
      MAIN TOOLBAR  (always visible, draggable)
      ══════════════════════════════════════════════════════════════════ -->
-<HorizontalLayout id="toolbar" position="%s" width="670" height="46"
+<HorizontalLayout id="toolbar" position="%s" width="750" height="46"
                   color="#12121e" padding="4 4 4 4" spacing="3"
                   allowDragging="true">
 
@@ -2062,6 +2141,10 @@ local function buildXml(ftcMode)
   <!-- Help -->
   <Button text="❓ Help" fontSize="12" color="#1a1a2e" textColor="#f4d35e"
           width="62" onClick="toggleHelpPanel" />
+
+  <!-- Scale -->
+  <Button text="⚖ Scale" fontSize="12" color="#1e2a3a" textColor="#a0d8ef"
+          width="68" onClick="toggleScalePanel" />
 
   <!-- FTC (conditional) -->
   %s
@@ -2816,6 +2899,33 @@ local function buildXml(ftcMode)
 </Panel>
 
 
+<!-- ══════════════════════════════════════════════════════════════════
+     SCALE PANEL
+     ══════════════════════════════════════════════════════════════════ -->
+<Panel id="scale_panel" active="false"
+       position="560 0 0" width="250" height="118"
+       color="#12121e" allowDragging="true"
+       showAnimation="Grow" hideAnimation="Shrink">
+  <VerticalLayout padding="8 8 8 8" spacing="6">
+    <Text text="⚖ Model Scale" fontSize="14" fontStyle="Bold"
+          color="#a0d8ef" alignment="MiddleCenter" height="22" />
+    <HorizontalLayout height="36" spacing="4">
+      <Button id="scale_btn_100" text="100%" fontSize="13"
+              color="#4fc3f7" textColor="#0a0a1a"
+              flexibleWidth="1" height="36" onClick="scaleAllModels|1.0" />
+      <Button id="scale_btn_75"  text="75%"  fontSize="13"
+              color="#1e2a3a" textColor="#aaaacc"
+              flexibleWidth="1" height="36" onClick="scaleAllModels|0.75" />
+      <Button id="scale_btn_50"  text="50%"  fontSize="13"
+              color="#1e2a3a" textColor="#aaaacc"
+              flexibleWidth="1" height="36" onClick="scaleAllModels|0.5" />
+    </HorizontalLayout>
+    <Text id="scale_status" text="Current: 100%" fontSize="11"
+          color="#777799" alignment="MiddleCenter" height="16" />
+  </VerticalLayout>
+</Panel>
+
+
 </Canvas>
     ]],
     -- 1: toolbar position
@@ -2902,6 +3012,12 @@ function onLoad(save_state)
             if data.dataCards then
                 dataCards = data.dataCards
             end
+            if data.modelScale then
+                modelScale = data.modelScale
+            end
+            if data.baseModelScales then
+                baseModelScales = data.baseModelScales
+            end
         end
     end
 
@@ -2927,6 +3043,7 @@ function onLoad(save_state)
         refreshWoundUI()
         refreshTeamUI()
         refreshDataCardsUI()
+        refreshScaleUI()
         if not existingTables then
             spawnSideTables()
         end
@@ -2942,10 +3059,12 @@ end
 
 function onSave()
     return JSON.encode({
-        rollHistory  = rollHistory,
-        woundTracker = woundTracker,
-        turnState    = turnState,
-        teamConfig   = teamConfig,
-        dataCards    = dataCards,
+        rollHistory      = rollHistory,
+        woundTracker     = woundTracker,
+        turnState        = turnState,
+        teamConfig       = teamConfig,
+        dataCards        = dataCards,
+        modelScale       = modelScale,
+        baseModelScales  = baseModelScales,
     })
 end

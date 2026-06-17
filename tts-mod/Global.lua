@@ -1608,6 +1608,170 @@ end
 
 -- Read the current Yelloscribe URL and pre-fill the unit name field
 -- by converting the last URL path segment from slug to title case.
+------------------------------------------------------------------------
+-- FETCH UNIT STATS FROM A WEB PAGE (New Recruit / Wahapedia / etc.)
+------------------------------------------------------------------------
+-- Multi-strategy HTML parser for 10th-ed stat blocks.
+-- Works best on server-rendered pages; partial results on SPAs.
+local function parseUnitStatsFromHtml(html, url)
+    local r = { name="", faction="", M="", T="", Sv="", W="", Ld="", OC="" }
+
+    -- ── Name ────────────────────────────────────────────────────────────
+    -- Try page <title> first, strip site suffix
+    local t = html:match("<title>%s*(.-)%s*[|%-–]") or html:match("<title>%s*(.-)%s*</title>")
+    if t and t ~= "" then r.name = t:match("^%s*(.-)%s*$") end
+    -- h1 override if title was generic
+    local h1 = html:match("<h1[^>]*>%s*(.-)%s*</h1>")
+    if h1 and h1 ~= "" and #h1 < 80 then r.name = h1 end
+    -- Fall back to URL slug (same as Pin from URL)
+    if r.name == "" then
+        local slug = url:match("/([^/?#]+)%s*$") or ""
+        if slug ~= "" and not slug:find("%.") then
+            r.name = slug:gsub("[%-_]+", " "):gsub("(%a)([%a]*)", function(a,b)
+                return a:upper()..b:lower() end)
+        end
+    end
+
+    -- ── JSON extraction helpers ──────────────────────────────────────────
+    -- Pulls a value for a key in any quoted JSON context: "key":"val" or "key":123
+    local function jv(key)
+        return html:match('"'..key..'":%s*"([^"]+)"')
+            or html:match('"'..key..'":%s*([%d]+%+?)')
+    end
+
+    -- ── Strategy 1: Next.js __NEXT_DATA__ blob ──────────────────────────
+    local nd = html:match('<script id="__NEXT_DATA__"[^>]*>(.-)</script>')
+    if nd then
+        -- Within the blob look for 10th-ed stat field names used by New Recruit
+        r.M  = r.M  ~= "" and r.M  or nd:match('"movement"%s*:%s*"([^"]+)"')  or nd:match('"move"%s*:%s*"([^"]+)"')  or ""
+        r.T  = r.T  ~= "" and r.T  or nd:match('"toughness"%s*:%s*(%d+)')                                            or ""
+        r.Sv = r.Sv ~= "" and r.Sv or nd:match('"save"%s*:%s*"([^"]+)"')       or nd:match('"armourSave"%s*:%s*"([^"]+)"') or ""
+        r.W  = r.W  ~= "" and r.W  or nd:match('"wounds"%s*:%s*(%d+)')         or nd:match('"w"%s*:%s*(%d+)')        or ""
+        r.Ld = r.Ld ~= "" and r.Ld or nd:match('"leadership"%s*:%s*"([^"]+)"') or nd:match('"ld"%s*:%s*"([^"]+)"')  or ""
+        r.OC = r.OC ~= "" and r.OC or nd:match('"objectiveControl"%s*:%s*(%d+)') or nd:match('"oc"%s*:%s*(%d+)')    or ""
+        -- Faction
+        r.faction = r.faction ~= "" and r.faction
+            or nd:match('"faction"%s*:%s*"([^"]+)"')
+            or nd:match('"factionKeyword"%s*:%s*"([^"]+)"') or ""
+        -- Unit name from JSON (more reliable than HTML title)
+        local jname = nd:match('"unitName"%s*:%s*"([^"]+)"') or nd:match('"name"%s*:%s*"([^"]+)"')
+        if jname and jname ~= "" and #jname < 80 then r.name = jname end
+    end
+
+    -- ── Strategy 2: Generic window.__X__ initial-state blobs ────────────
+    if r.M == "" or r.T == "" then
+        for blob in html:gmatch('<script[^>]*>%s*window%.__[A-Z_]+__%s*=%s*({.+})</script>') do
+            r.M  = r.M  ~= "" and r.M  or blob:match('"movement"%s*:%s*"([^"]+)"') or blob:match('"M"%s*:%s*"([^"]+)"') or ""
+            r.T  = r.T  ~= "" and r.T  or blob:match('"toughness"%s*:%s*(%d+)')    or blob:match('"T"%s*:%s*(%d+)')     or ""
+            r.Sv = r.Sv ~= "" and r.Sv or blob:match('"save"%s*:%s*"([^"]+)"')     or blob:match('"Sv"%s*:%s*"([^"]+)"') or ""
+            r.W  = r.W  ~= "" and r.W  or blob:match('"wounds"%s*:%s*(%d+)')       or blob:match('"W"%s*:%s*(%d+)')     or ""
+            r.Ld = r.Ld ~= "" and r.Ld or blob:match('"leadership"%s*:%s*"([^"]+)"') or blob:match('"Ld"%s*:%s*"([^"]+)"') or ""
+            r.OC = r.OC ~= "" and r.OC or blob:match('"objectiveControl"%s*:%s*(%d+)') or blob:match('"OC"%s*:%s*(%d+)') or ""
+        end
+    end
+
+    -- ── Strategy 3: HTML stat table (Wahapedia + server-rendered pages) ──
+    -- Wahapedia and similar sites render an ordered stat row: M T Sv W Ld OC
+    if r.M == "" then
+        -- Find any table-like block containing all six stat headers
+        local block = html:match('(<t[^>]*>.-M.+?T.+?Sv.+?W.+?Ld.+?OC.-</t[^>]*>)')
+                   or html:match('(<tr[^>]*>.-</tr>.-<tr[^>]*>.-</tr>)')
+        if block then
+            -- Strip tags, collect whitespace-delimited tokens
+            local clean = block:gsub("<[^>]+>", " ")
+            local tok = {}
+            for w in clean:gmatch("%S+") do table.insert(tok, w) end
+            -- Find index of "M" header followed by "T" in the same sequence
+            for i = 1, #tok - 6 do
+                if tok[i] == "M" and tok[i+1] == "T" and tok[i+2] == "Sv"
+                   and tok[i+3] == "W" and tok[i+4] == "Ld" and tok[i+5] == "OC" then
+                    r.M  = r.M  ~= "" and r.M  or (tok[i+6]  or "")
+                    r.T  = r.T  ~= "" and r.T  or (tok[i+7]  or "")
+                    r.Sv = r.Sv ~= "" and r.Sv or (tok[i+8]  or "")
+                    r.W  = r.W  ~= "" and r.W  or (tok[i+9]  or "")
+                    r.Ld = r.Ld ~= "" and r.Ld or (tok[i+10] or "")
+                    r.OC = r.OC ~= "" and r.OC or (tok[i+11] or "")
+                    break
+                end
+            end
+        end
+    end
+
+    -- ── Strategy 4: Short-key JSON in any inline script ──────────────────
+    -- Covers custom sites that use compact field names
+    if r.M == "" then
+        r.M  = jv("M")  or jv("m")  or ""
+        r.T  = jv("T")  or jv("t")  or ""
+        r.Sv = jv("Sv") or jv("sv") or ""
+        r.W  = jv("W")  or jv("w")  or ""
+        r.Ld = jv("Ld") or jv("ld") or ""
+        r.OC = jv("OC") or jv("oc") or ""
+    end
+
+    return r
+end
+
+-- Fill the data card form with whatever stats were parsed.
+-- Returns a human-readable summary ("✓ all fields" / "✓ name, M, T  — fill Sv, Ld, OC manually").
+local function applyParsedStats(r)
+    local filled = {}
+    local missing = {}
+    local function set(id, key, label)
+        if r[key] and r[key] ~= "" then
+            UI.setValue(id, r[key])
+            table.insert(filled, label)
+        else
+            table.insert(missing, label)
+        end
+    end
+    if r.name and r.name ~= "" then
+        UI.setValue("dc_name_input", r.name)
+        table.insert(filled, "name")
+    else
+        table.insert(missing, "name")
+    end
+    if r.faction and r.faction ~= "" then
+        UI.setValue("dc_faction_input", r.faction)
+        table.insert(filled, "faction")
+    end
+    set("dc_M_input",  "M",  "M")
+    set("dc_T_input",  "T",  "T")
+    set("dc_Sv_input", "Sv", "Sv")
+    set("dc_W_input",  "W",  "W")
+    set("dc_Ld_input", "Ld", "Ld")
+    set("dc_OC_input", "OC", "OC")
+
+    if #missing == 0 then
+        return "✓ All fields filled from page"
+    elseif #filled == 0 then
+        return "⚠ No stats found — page may require JavaScript to load"
+    else
+        return "✓ " .. table.concat(filled, ", ") ..
+               "  —  fill manually: " .. table.concat(missing, ", ")
+    end
+end
+
+-- Called by the '🌐 Fetch Stats' button.
+-- Fetches the current Yelloscribe browser URL and tries to parse unit stats.
+function fetchStatsFromBrowser(player)
+    if not checkPerm(player) then return end
+    local url = UI.getAttribute("ys_browser", "url") or ""
+    if url == "" or url == "about:blank" then
+        printToColor("Navigate to a unit page in the rules browser first.", player.color, {r=1,g=0.6,b=0.3})
+        return
+    end
+    UI.setAttribute("dc_status", "text", "⏳ Fetching from " .. (url:match("https?://([^/]+)") or url) .. "…")
+    WebRequest.get(url, function(req)
+        if req.is_error then
+            UI.setAttribute("dc_status", "text", "❌ " .. (req.error or "request failed"))
+            return
+        end
+        local stats  = parseUnitStatsFromHtml(req.text, url)
+        local summary = applyParsedStats(stats)
+        UI.setAttribute("dc_status", "text", summary)
+    end)
+end
+
 function pinCurrentYelloscribePage(player)
     if not checkPerm(player) then return end
     local url  = UI.getAttribute("ys_browser", "url") or ""
@@ -2470,6 +2634,10 @@ function onChat(message, player)
         toggleToolbar()
         return false
 
+    elseif cmd == "!fetchstats" then
+        fetchStatsFromBrowser(player)
+        return false
+
     elseif cmd == "!history" then
         if #rollHistory == 0 then
             printToColor("No rolls yet.", player.color, {r=0.7,g=0.7,b=0.7})
@@ -2560,6 +2728,7 @@ function onChat(message, player)
             "!import                      — open New Recruit / BattleScribe import panel",
             "!surrender                   — open surrender confirmation panel",
             "!toolbar                     — show / hide the toolbar",
+            "!fetchstats                  — fetch unit stats from the current rules-browser page",
             "!scale <pct>                 — scale all Custom_Model minis (e.g. !scale 75)",
             "!tables                      — respawn player side tables",
             "!cleartables                 — remove player side tables",
@@ -3412,13 +3581,18 @@ local function buildXml(ftcMode)
         <InputField id="dc_notes_input" placeholder="Special abilities / notes…"
                     fontSize="11" height="24" />
 
-        <!-- Action buttons -->
+        <!-- Action buttons row 1 -->
         <HorizontalLayout height="28" spacing="3">
           <Button text="📋 Pin from URL" fontSize="11" color="#1a1400" textColor="#f0c060"
                   flexibleWidth="1" height="28" onClick="pinCurrentYelloscribePage" />
           <Button text="✚ Save Card" fontSize="11" color="#0a1a0a" textColor="#88ee88"
                   flexibleWidth="1" height="28" onClick="saveDataCard" />
         </HorizontalLayout>
+
+        <!-- Action buttons row 2: fetch stats from current browser page -->
+        <Button text="🌐 Fetch Stats from Page" fontSize="11"
+                color="#001a22" textColor="#44ccee"
+                height="26" onClick="fetchStatsFromBrowser" />
 
         <Text text="────────────────" fontSize="9" color="#2a2a44"
               alignment="MiddleCenter" height="10" />
@@ -3532,6 +3706,25 @@ local function buildXml(ftcMode)
               fontSize="11" color="#88ee88" alignment="MiddleLeft" height="15" />
         <Text text="⚑ Yield — open surrender confirmation (removes staged models + cards)"
               fontSize="11" color="#ff6666" alignment="MiddleLeft" height="15" />
+
+        <!-- ── DATA CARD FETCH ───────────────────────────────────── -->
+        <Text text=" " fontSize="6" height="4" />
+        <Text text="── 🌐 FETCH STATS ──" fontSize="12" fontStyle="Bold"
+              color="#44ccee" alignment="MiddleLeft" height="16" />
+        <Text text="Navigate to a unit page in the 📜 Rules browser, then click"
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="'🌐 Fetch Stats from Page' to auto-fill the data card form."
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="Works best on server-rendered pages (Wahapedia, etc.)."
+              fontSize="11" color="#666688" alignment="MiddleLeft" height="15" />
+        <Text text="New Recruit is a JavaScript app — name fills from URL;"
+              fontSize="11" color="#666688" alignment="MiddleLeft" height="15" />
+        <Text text="stats fill if embedded in the page's script tags."
+              fontSize="11" color="#666688" alignment="MiddleLeft" height="15" />
+        <Text text="Any missing fields are listed — fill them manually."
+              fontSize="11" color="#666688" alignment="MiddleLeft" height="15" />
+        <Text text="!fetchstats                  — same as clicking the button"
+              fontSize="11" color="#44ccee" alignment="MiddleLeft" height="15" />
 
         <!-- ── NEW RECRUIT / BATTLESCRIBE IMPORT ─────────────────── -->
         <Text text=" " fontSize="6" height="4" />

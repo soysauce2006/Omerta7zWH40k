@@ -141,6 +141,85 @@ function positionDiceMatsForFTC()
     log(#mats .. " dice mat(s) moved to player side tables.")
 end
 
+------------------------------------------------------------------------
+-- PHYSICAL DATA CARD OBJECTS
+-- Spawns a Notecard on the matching player's side table for each pinned
+-- data card. Cards are grouped in rows of 4 across the table surface.
+------------------------------------------------------------------------
+local DC_COLS    = 4    -- cards per row
+local DC_X_GAP  = 1.7  -- spacing between columns
+local DC_Z_GAP  = 2.1  -- spacing between rows
+
+local function dcStatVal(v) return (v and v ~= "") and v or "?" end
+
+local function buildDataCardBody(dc)
+    local s = ""
+    if dc.faction and dc.faction ~= "" then
+        s = dc.faction .. "\n\n"
+    end
+    s = s ..
+        "M "  .. dcStatVal(dc.M)  .. "  T "  .. dcStatVal(dc.T)  .. "  Sv " .. dcStatVal(dc.Sv) .. "\n" ..
+        "W "  .. dcStatVal(dc.W)  .. "  Ld " .. dcStatVal(dc.Ld) .. "  OC " .. dcStatVal(dc.OC)
+    if dc.notes and dc.notes ~= "" then
+        s = s .. "\n\n" .. dc.notes
+    end
+    return s
+end
+
+-- Destroy every object tagged "WH40K_DataCard".
+function clearPhysicalDataCards()
+    for _, obj in ipairs(getAllObjects()) do
+        if obj.hasTag("WH40K_DataCard") then
+            obj.destruct()
+        end
+    end
+end
+
+-- Spawn one Notecard for a data card at its slot position on the player's table.
+local function spawnDataCardObject(dc, slotIdx)
+    if not dc.playerColor or dc.playerColor == "" then return end
+    local tableCfg = nil
+    for _, cfg in ipairs(SIDE_TABLE_CFG) do
+        if cfg.name == dc.playerColor then tableCfg = cfg; break end
+    end
+    if not tableCfg then return end
+
+    local col   = (slotIdx - 1) % DC_COLS
+    local row   = math.floor((slotIdx - 1) / DC_COLS)
+    local startX = tableCfg.pos[1] - ((DC_COLS - 1) * DC_X_GAP) / 2
+    local cardPos = {
+        startX + col * DC_X_GAP,
+        tableCfg.pos[2] + 0.35,
+        tableCfg.pos[3] - 1.0 + row * DC_Z_GAP,
+    }
+
+    local obj = spawnObject({
+        type     = "Notecard",
+        position = cardPos,
+        rotation = { tableCfg.rot[1], tableCfg.rot[2], tableCfg.rot[3] },
+        scale    = { 1.4, 1, 1.8 },
+    })
+    obj.setName(dc.name)
+    obj.setDescription(buildDataCardBody(dc))
+    obj.addTag("WH40K_DataCard")
+    -- Tint the notecard with the player's seat colour
+    local p = Player[dc.playerColor]
+    if p then obj.setColorTint(p.color) end
+end
+
+-- Clear and re-spawn all physical data card notecards for every player.
+function respawnAllPhysicalDataCards()
+    clearPhysicalDataCards()
+    -- Group cards by player and assign slot indices per player
+    local slotByPlayer = {}
+    for _, dc in ipairs(dataCards) do
+        if dc.playerColor and dc.playerColor ~= "" then
+            slotByPlayer[dc.playerColor] = (slotByPlayer[dc.playerColor] or 0) + 1
+            spawnDataCardObject(dc, slotByPlayer[dc.playerColor])
+        end
+    end
+end
+
 -- Destroy all tracked side tables.
 function clearSideTables()
     for _, guid in ipairs(sideTableGuids) do
@@ -1335,7 +1414,8 @@ function pinCurrentYelloscribePage()
     end
 end
 
-function saveDataCard()
+-- `player` is the TTS Player object automatically passed by UI onClick.
+function saveDataCard(player)
     local name = UI.getValue("dc_name_input")
     if not name or name == "" then
         log("Enter a unit name before saving a data card.")
@@ -1345,24 +1425,32 @@ function saveDataCard()
         log("Data card limit (" .. MAX_DATACARDS .. ") reached — remove one first.")
         return
     end
-    dataCards[#dataCards + 1] = {
-        name    = name,
-        faction = UI.getValue("dc_faction_input") or "",
-        M       = UI.getValue("dc_M_input")       or "",
-        T       = UI.getValue("dc_T_input")       or "",
-        Sv      = UI.getValue("dc_Sv_input")      or "",
-        W       = UI.getValue("dc_W_input")       or "",
-        Ld      = UI.getValue("dc_Ld_input")      or "",
-        OC      = UI.getValue("dc_OC_input")      or "",
-        notes   = UI.getValue("dc_notes_input")   or "",
+    local dc = {
+        name        = name,
+        faction     = UI.getValue("dc_faction_input") or "",
+        M           = UI.getValue("dc_M_input")       or "",
+        T           = UI.getValue("dc_T_input")       or "",
+        Sv          = UI.getValue("dc_Sv_input")      or "",
+        W           = UI.getValue("dc_W_input")       or "",
+        Ld          = UI.getValue("dc_Ld_input")      or "",
+        OC          = UI.getValue("dc_OC_input")      or "",
+        notes       = UI.getValue("dc_notes_input")   or "",
+        playerColor = player and player.color or "",
     }
+    dataCards[#dataCards + 1] = dc
     for _, id in ipairs({ "dc_name_input","dc_faction_input","dc_M_input",
                           "dc_T_input","dc_Sv_input","dc_W_input",
                           "dc_Ld_input","dc_OC_input","dc_notes_input" }) do
         UI.setValue(id, "")
     end
     refreshDataCardsUI()
-    log("📋 Data card pinned: " .. name)
+    -- Count how many cards this player already has to assign the right slot
+    local playerSlot = 0
+    for _, d in ipairs(dataCards) do
+        if d.playerColor == dc.playerColor then playerSlot = playerSlot + 1 end
+    end
+    spawnDataCardObject(dc, playerSlot)
+    log("📋 Data card pinned: " .. name .. (dc.playerColor ~= "" and (" [" .. dc.playerColor .. "]") or ""))
 end
 
 function removeDataCard(slotStr)
@@ -1373,6 +1461,8 @@ function removeDataCard(slotStr)
         local n = dataCards[idx].name
         table.remove(dataCards, idx)
         refreshDataCardsUI()
+        -- Rebuild physical cards so slot positions stay contiguous
+        Wait.frames(function() respawnAllPhysicalDataCards() end, 2)
         log("📋 Removed data card: " .. n)
     end
 end
@@ -2844,6 +2934,8 @@ function onLoad(save_state)
         if FTC_PRESENT then
             Wait.frames(function() positionDiceMatsForFTC() end, 10)
         end
+        -- Restore physical data card notecards from saved state
+        Wait.frames(function() respawnAllPhysicalDataCards() end, 20)
         log("WH40K mod ready. Type !help for commands.")
     end, 0.5)
 end

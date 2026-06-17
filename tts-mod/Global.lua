@@ -727,6 +727,15 @@ function toggleTeamsPanel()
     end
 end
 
+function toggleHelpPanel()
+    local vis = UI.getAttribute("help_panel", "active")
+    if vis == "true" or vis == true then
+        UI.hide("help_panel")
+    else
+        UI.show("help_panel")
+    end
+end
+
 ------------------------------------------------------------------------
 -- WOUND TRACKER — model-aware damage allocation
 --
@@ -1658,7 +1667,7 @@ local function buildXml(ftcMode)
 <!-- ══════════════════════════════════════════════════════════════════
      MAIN TOOLBAR  (always visible, draggable)
      ══════════════════════════════════════════════════════════════════ -->
-<HorizontalLayout id="toolbar" position="%s" width="620" height="46"
+<HorizontalLayout id="toolbar" position="%s" width="670" height="46"
                   color="#12121e" padding="4 4 4 4" spacing="3"
                   allowDragging="true">
 
@@ -1699,6 +1708,10 @@ local function buildXml(ftcMode)
   <!-- Yelloscribe -->
   <Button text="📜 Rules"  fontSize="12" color="#1e2a3a" textColor="#aaaacc"
           width="68" onClick="openYelloscribe" />
+
+  <!-- Help -->
+  <Button text="❓ Help" fontSize="12" color="#1a1a2e" textColor="#f4d35e"
+          width="62" onClick="toggleHelpPanel" />
 
   <!-- FTC (conditional) -->
   %s
@@ -2149,6 +2162,242 @@ local function buildXml(ftcMode)
                 width="940" height="654" />
   </VerticalLayout>
 </Panel>
+
+
+<!-- ══════════════════════════════════════════════════════════════════
+     HELP PANEL
+     ══════════════════════════════════════════════════════════════════ -->
+<Panel id="help_panel" active="false"
+       position="340 60 0" width="450" height="660"
+       color="#0d0d1a" allowDragging="true"
+       showAnimation="Grow" hideAnimation="Shrink">
+  <VerticalLayout padding="8 8 8 8" spacing="4">
+
+    <!-- Header -->
+    <HorizontalLayout height="38" color="#252540" padding="6 6 4 4">
+      <Text text="❓ WH40K Mod — Help" fontSize="15" fontStyle="Bold"
+            color="#f4d35e" alignment="MiddleLeft" flexibleWidth="1" />
+      <Button text="✕" fontSize="14" color="#0d0d1a" textColor="#aaaacc"
+              width="32" height="32" onClick="toggleHelpPanel" />
+    </HorizontalLayout>
+
+    <ScrollView flexibleHeight="1" scrollSensitivity="30">
+      <VerticalLayout spacing="3" padding="2 2 6 2">
+
+        <!-- ── TOOLBAR ─────────────────────────────────────────── -->
+        <Text text="── TOOLBAR ──" fontSize="12" fontStyle="Bold"
+              color="#f4d35e" alignment="MiddleCenter" height="20" />
+        <Text text="All panels are draggable. Open/close each with its toolbar button."
+              fontSize="11" color="#888899" alignment="MiddleLeft" height="16" />
+        <Text text="🎲 Dice — dice roller panel"
+              fontSize="11" color="#7ab8f5" alignment="MiddleLeft" height="15" />
+        <Text text="⚔ Attack — full attack sequence panel"
+              fontSize="11" color="#f4a261" alignment="MiddleLeft" height="15" />
+        <Text text="🛡 Save — armour save roller"
+              fontSize="11" color="#a8d8a8" alignment="MiddleLeft" height="15" />
+        <Text text="💀 Morale — Battleshock test"
+              fontSize="11" color="#cc99ff" alignment="MiddleLeft" height="15" />
+        <Text text="⏱ Turn — turn / phase tracker"
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="❤ HP — wound / model tracker"
+              fontSize="11" color="#ff7777" alignment="MiddleLeft" height="15" />
+        <Text text="👥 Teams — match format and army tracker"
+              fontSize="11" color="#ccaaff" alignment="MiddleLeft" height="15" />
+        <Text text="📜 Rules — Yelloscribe in-game rules browser"
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+
+        <!-- ── DICE ROLLER ─────────────────────────────────────── -->
+        <Text text=" " fontSize="6" height="4" />
+        <Text text="── 🎲 DICE ROLLER ──" fontSize="12" fontStyle="Bold"
+              color="#7ab8f5" alignment="MiddleCenter" height="20" />
+        <Text text="Panel: set Count + Sides, click Roll. Results announced to all."
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="16" />
+        <Text text="Dice Mat: drag physical TTS dice onto a tagged mat — auto-announces"
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="16" />
+        <Text text="the results in chat (tag an object DiceMat to enable)."
+              fontSize="11" color="#888899" alignment="MiddleLeft" height="15" />
+        <Text text="Chat:  !roll 2d6   !roll 3d3   !roll 1d100"
+              fontSize="11" color="#7ab8f5" alignment="MiddleLeft" height="15" />
+        <Text text="Chat:  !history — see your last 10 rolls"
+              fontSize="11" color="#7ab8f5" alignment="MiddleLeft" height="15" />
+
+        <!-- ── ATTACK SEQUENCE ─────────────────────────────────── -->
+        <Text text=" " fontSize="6" height="4" />
+        <Text text="── ⚔ ATTACK SEQUENCE ──" fontSize="12" fontStyle="Bold"
+              color="#f4a261" alignment="MiddleCenter" height="20" />
+        <Text text="Full combat flow: Attacks → Hit → Wound → AP → Save → Damage."
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="16" />
+        <Text text="Set each value in the panel and step through the sequence."
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="Damage: flat number, D3, or D6 — enter d3 / d6 in the field."
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="Chat:  !attack &lt;n&gt; &lt;hit+&gt; &lt;wound+&gt; &lt;AP&gt; &lt;dmg&gt; &lt;save+&gt;"
+              fontSize="11" color="#f4a261" alignment="MiddleLeft" height="15" />
+        <Text text='Example: !attack 5 3 4 -1 2 3  (5 attacks, hit 3+, wound 4+, AP-1, 2dmg, sv3+)'
+              fontSize="10" color="#888899" alignment="MiddleLeft" height="15" />
+
+        <!-- ── SAVE ────────────────────────────────────────────── -->
+        <Text text=" " fontSize="6" height="4" />
+        <Text text="── 🛡 ARMOUR SAVE ──" fontSize="12" fontStyle="Bold"
+              color="#a8d8a8" alignment="MiddleCenter" height="20" />
+        <Text text="Roll saves only (skips hit and wound steps)."
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="16" />
+        <Text text="Chat:  !save &lt;dice&gt; &lt;save+&gt; [AP]"
+              fontSize="11" color="#a8d8a8" alignment="MiddleLeft" height="15" />
+        <Text text='Example: !save 4 3 -1  (4 dice, save 3+, AP-1 → effective save 4+)'
+              fontSize="10" color="#888899" alignment="MiddleLeft" height="15" />
+
+        <!-- ── MORALE ──────────────────────────────────────────── -->
+        <Text text=" " fontSize="6" height="4" />
+        <Text text="── 💀 BATTLESHOCK ──" fontSize="12" fontStyle="Bold"
+              color="#cc99ff" alignment="MiddleCenter" height="20" />
+        <Text text="Rolls 2d6 + models lost vs Leadership. Fail = models flee."
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="16" />
+        <Text text="Chat:  !morale &lt;Ld&gt; &lt;models lost&gt;"
+              fontSize="11" color="#cc99ff" alignment="MiddleLeft" height="15" />
+        <Text text='Example: !morale 7 3  (Ld 7, 3 models lost this turn)'
+              fontSize="10" color="#888899" alignment="MiddleLeft" height="15" />
+
+        <!-- ── TURN TRACKER ────────────────────────────────────── -->
+        <Text text=" " fontSize="6" height="4" />
+        <Text text="── ⏱ TURN TRACKER ──" fontSize="12" fontStyle="Bold"
+              color="#aaaacc" alignment="MiddleCenter" height="20" />
+        <Text text="Tracks 6 WH40K phases per army:"
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="Command → Movement → Psychic → Shooting → Charge → Fight"
+              fontSize="11" color="#ccccee" alignment="MiddleLeft" height="15" />
+        <Text text="◀ / ▶ buttons step phases. After Fight, the next army begins."
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="Round counter increments when all armies complete their Fight phase."
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="Chat:  !next   !prev   !turn"
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="FTC mode: turn tracker hides; FTC controls phases instead."
+              fontSize="11" color="#44bb88" alignment="MiddleLeft" height="15" />
+
+        <!-- ── WOUND TRACKER ───────────────────────────────────── -->
+        <Text text=" " fontSize="6" height="4" />
+        <Text text="── ❤ WOUND TRACKER ──" fontSize="12" fontStyle="Bold"
+              color="#ff7777" alignment="MiddleCenter" height="20" />
+        <Text text="Model-aware HP: damage fills the front model first; that model is"
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="removed when its wounds reach 0, then damage carries over."
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="Quick-add row: enter Name + W/model + model count, then ✚ Add."
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="HP bar format:  4/5×2W  =  4 wounds left on 1 of 2 remaining 5W models"
+              fontSize="10" color="#888899" alignment="MiddleLeft" height="15" />
+        <Text text="Chat:  !addunit &quot;Name&quot; &lt;W/model&gt; [count]"
+              fontSize="11" color="#ff7777" alignment="MiddleLeft" height="15" />
+        <Text text="Chat:  !wound &quot;Name&quot; &lt;amount&gt;"
+              fontSize="11" color="#ff7777" alignment="MiddleLeft" height="15" />
+        <Text text="Chat:  !heal  &quot;Name&quot; &lt;amount&gt;"
+              fontSize="11" color="#ff7777" alignment="MiddleLeft" height="15" />
+
+        <!-- ── TEAMS ───────────────────────────────────────────── -->
+        <Text text=" " fontSize="6" height="4" />
+        <Text text="── 👥 TEAMS &amp; MATCH FORMAT ──" fontSize="12" fontStyle="Bold"
+              color="#ccaaff" alignment="MiddleCenter" height="20" />
+        <Text text="Choose a format and click Auto-assign to fill teams from seated players."
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="FFA — one army per seated player (any count)"
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="2v1 / 2v2 / 3v2 / 3v3 — two opposing teams (Alpha vs Bravo)"
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="3-Team — three factions: Alpha / Bravo / Charlie (2 players each)"
+              fontSize="11" color="#4fc3f7" alignment="MiddleLeft" height="15" />
+        <Text text="Move player: type a TTS colour (e.g. Red) and click → T1 / T2 / T3."
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="Rename team: type new name in the rename field, click Rename."
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="Active army: ◀/▶ in Teams or Turn panel steps through armies."
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="Chat:  !setmode &lt;mode&gt;   !teams"
+              fontSize="11" color="#ccaaff" alignment="MiddleLeft" height="15" />
+
+        <!-- ── YELLOSCRIBE ─────────────────────────────────────── -->
+        <Text text=" " fontSize="6" height="4" />
+        <Text text="── 📜 YELLOSCRIBE ──" fontSize="12" fontStyle="Bold"
+              color="#aaaacc" alignment="MiddleCenter" height="20" />
+        <Text text="Opens yelloscribe.com inside TTS — browse datasheets and"
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="core rules without alt-tabbing. Use the Track row at the top"
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="to add a unit directly to the Wound Tracker while you browse."
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="Chat:  !yelloscribe — opens the panel"
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+
+        <!-- ── FTC COMPATIBILITY ───────────────────────────────── -->
+        <Text text=" " fontSize="6" height="4" />
+        <Text text="── ⚙ FTC COMPATIBILITY ──" fontSize="12" fontStyle="Bold"
+              color="#44ee88" alignment="MiddleCenter" height="20" />
+        <Text text="When Free the Codex (FTC) is loaded alongside this mod:"
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="  • Turn tracker hides — FTC manages phases and rounds"
+              fontSize="11" color="#44bb88" alignment="MiddleLeft" height="15" />
+        <Text text="  • Teams panel stays live and syncs the active army automatically"
+              fontSize="11" color="#44bb88" alignment="MiddleLeft" height="15" />
+        <Text text="  • When FTC hands a turn to a player, the correct team highlights"
+              fontSize="11" color="#44bb88" alignment="MiddleLeft" height="15" />
+        <Text text="  • Phase chat messages include the active army name"
+              fontSize="11" color="#44bb88" alignment="MiddleLeft" height="15" />
+        <Text text="  • Wound tracker works normally (FTC units can be imported)"
+              fontSize="11" color="#44bb88" alignment="MiddleLeft" height="15" />
+        <Text text="Import FTC units into wound tracker:"
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="  Toolbar: click ⚙ FTC button   or   Chat: !ftcimport"
+              fontSize="11" color="#44ee88" alignment="MiddleLeft" height="15" />
+        <Text text="Import one unit by GUID:  !ftcunit &lt;GUID&gt;"
+              fontSize="11" color="#44ee88" alignment="MiddleLeft" height="15" />
+        <Text text="(GUID is the object GUID shown on the FTC unit card in TTS)"
+              fontSize="10" color="#555577" alignment="MiddleLeft" height="15" />
+
+        <!-- ── ALL CHAT COMMANDS ───────────────────────────────── -->
+        <Text text=" " fontSize="6" height="4" />
+        <Text text="── CHAT COMMANDS ──" fontSize="12" fontStyle="Bold"
+              color="#f4d35e" alignment="MiddleCenter" height="20" />
+        <Text text="!roll &lt;N&gt;d&lt;S&gt;                 — free dice roll"
+              fontSize="11" color="#f4d35e" alignment="MiddleLeft" height="15" />
+        <Text text="!attack &lt;n&gt; &lt;hit&gt; &lt;wnd&gt; &lt;AP&gt; &lt;dmg&gt; &lt;sv&gt;  — full sequence"
+              fontSize="11" color="#f4d35e" alignment="MiddleLeft" height="15" />
+        <Text text="!save &lt;dice&gt; &lt;save+&gt; [AP]       — armour saves only"
+              fontSize="11" color="#f4d35e" alignment="MiddleLeft" height="15" />
+        <Text text="!morale &lt;Ld&gt; &lt;lost&gt;            — Battleshock test"
+              fontSize="11" color="#f4d35e" alignment="MiddleLeft" height="15" />
+        <Text text='!addunit "Name" &lt;W&gt; [models]   — add unit to HP tracker'
+              fontSize="11" color="#f4d35e" alignment="MiddleLeft" height="15" />
+        <Text text='!wound "Name" &lt;n&gt;             — deal wounds'
+              fontSize="11" color="#f4d35e" alignment="MiddleLeft" height="15" />
+        <Text text='!heal  "Name" &lt;n&gt;             — heal wounds'
+              fontSize="11" color="#f4d35e" alignment="MiddleLeft" height="15" />
+        <Text text="!setmode &lt;mode&gt;               — ffa 2v1 2v2 3v2 3v3 3team"
+              fontSize="11" color="#f4d35e" alignment="MiddleLeft" height="15" />
+        <Text text="!teams                         — show team setup"
+              fontSize="11" color="#f4d35e" alignment="MiddleLeft" height="15" />
+        <Text text="!next / !prev                  — step turn phases"
+              fontSize="11" color="#f4d35e" alignment="MiddleLeft" height="15" />
+        <Text text="!turn                          — show current phase"
+              fontSize="11" color="#f4d35e" alignment="MiddleLeft" height="15" />
+        <Text text="!yelloscribe                   — open rules browser"
+              fontSize="11" color="#f4d35e" alignment="MiddleLeft" height="15" />
+        <Text text="!history                       — last 10 rolls"
+              fontSize="11" color="#f4d35e" alignment="MiddleLeft" height="15" />
+        <Text text="!ftcimport                     — import all FTC units (FTC only)"
+              fontSize="11" color="#44ee88" alignment="MiddleLeft" height="15" />
+        <Text text="!ftcunit &lt;GUID&gt;               — import one FTC unit (FTC only)"
+              fontSize="11" color="#44ee88" alignment="MiddleLeft" height="15" />
+        <Text text="!help                          — show this list in chat"
+              fontSize="11" color="#f4d35e" alignment="MiddleLeft" height="15" />
+
+        <Text text=" " fontSize="6" height="6" />
+
+      </VerticalLayout>
+    </ScrollView>
+
+  </VerticalLayout>
+</Panel>
+
 
 </Canvas>
     ]],

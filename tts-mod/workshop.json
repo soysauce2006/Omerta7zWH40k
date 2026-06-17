@@ -1,0 +1,20 @@
+{
+  "name": "WH40K TTS Mod — Dice · Attack · Turns · HP · Teams · FTC",
+  "description": "Adds a full suite of Warhammer 40K tools to any TTS table:\n\n🎲 Dice Roller — panel + Dice Mat auto-announce\n⚔ Attack — Hit→Wound→Save→Damage calculator\n🛡 Save — armour save roller\n💀 Battleshock — morale / Battleshock test\n⏱ Turn Tracker — 6 WH40K phases with round counter\n❤ Wound Tracker — model-aware HP (damage fills front model first)\n👥 Teams — FFA / 2v1 / 2v2 / 3v2 / 3v3 / 3-Team match formats\n📜 Yelloscribe — in-game browser to yelloscribe.com\n⚙ FTC Compat — full Free the Codex integration (auto-detected)\n❓ Help — scrollable in-game help panel\n\nFTC COMPATIBILITY: Load Free the Codex first — this script detects it automatically. Turn tracker hands off to FTC; Teams panel syncs active army from FTC turn events; ⚙ FTC toolbar button imports FTC unit HP into the wound tracker.\n\nType !help in chat or click ❓ Help for a full command reference.",
+  "tags": [
+    "Warhammer 40000",
+    "40K",
+    "WH40K",
+    "Scripting",
+    "FTC",
+    "Free the Codex",
+    "Dice",
+    "Turn Tracker",
+    "Wound Tracker",
+    "Teams"
+  ],
+  "visibility": "public",
+  "file": "WH40K-Mod.json",
+  "image": "thumbnail.png",
+  "change_note": "Initial release"
+}

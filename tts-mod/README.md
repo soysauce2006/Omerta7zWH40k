@@ -21,8 +21,50 @@ Adds the following to any Warhammer 40,000 Tabletop Simulator table:
 
 ```
 tts-mod/
-└── Global.lua    ← the entire mod; paste this into TTS Global Script
+├── Global.lua       ← the entire mod script
+├── WH40K-Mod.json   ← TTS save file for Steam Workshop upload
+├── workshop.json    ← Workshop metadata (name, tags, description)
+└── thumbnail.png    ← Workshop preview image (add your own, 512×512 recommended)
 ```
+
+---
+
+## Install — Steam Workshop (easiest)
+
+This is the recommended method. Players subscribe once and the mod auto-updates.
+
+### Step 1 — Upload to Workshop (done once by the mod author)
+
+#### Option A: Upload via Tabletop Simulator directly
+
+1. In TTS go to **Configuration → Workshop → Upload New Item**.
+2. Fill in:
+   - **Name:** `WH40K TTS Mod — Dice · Attack · Turns · HP · Teams · FTC`
+   - **Description:** paste the content from `workshop.json → description`
+   - **Tags:** Scripting, Warhammer 40000
+3. Under **Save File**, browse to `tts-mod/WH40K-Mod.json`.
+4. Under **Preview Image**, choose a 512×512 PNG (`thumbnail.png`).
+5. Click **Upload** and set visibility to **Public**.
+6. Copy the Workshop item URL — share this with players.
+
+> To update an existing item: Configuration → Workshop → Update Item → pick the same item → re-upload `WH40K-Mod.json`.
+
+#### Option B: Upload via Steam Workshop Uploader tool
+
+A community CLI tool ([tts-workshop-uploader](https://github.com/nicorhs/tts-workshop-uploader)) reads `workshop.json` automatically:
+
+```bash
+tts-workshop-uploader upload tts-mod/workshop.json
+```
+
+### Step 2 — Players subscribe & use
+
+1. Player opens the Workshop link and clicks **Subscribe**.
+2. In TTS: **Games → Workshop** — the mod appears in the list.
+3. **Option A — Use as a standalone table:** click **Load**. The toolbar appears on an empty RPG table.
+4. **Option B — Add to your own WH40K table (recommended):**
+   - Load the Workshop item, open **Modding → Scripting Editor → Global**, copy all the script.
+   - Load your WH40K table, open **Modding → Scripting Editor → Global**, paste, click **Save & Play**.
 
 ---
 

@@ -5,4 +5,16 @@ generated = []
 id = "2vZ7ANKr8txb3oYKznbfP"
 uri = "file://tts-mod/README.md"
 type = "text"
-title = "WH40K TTS Mod — Install Instructions"
+title = "README.md — Install instructions (updated)"
+
+[[outputs]]
+id = "W823TReyTvnXawHK966_h"
+uri = "file://tts-mod/WH40K-Mod.json"
+type = "unspecified"
+title = "WH40K-Mod.json — TTS Workshop save file"
+
+[[outputs]]
+id = "hJK_y1EPtxLxJnXxeJyF7"
+uri = "file://tts-mod/workshop.json"
+type = "unspecified"
+title = "workshop.json — Workshop metadata"

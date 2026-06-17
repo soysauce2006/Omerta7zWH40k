@@ -1818,6 +1818,121 @@ function toggleStrategemsPanel()
     end
 end
 
+------------------------------------------------------------------------
+-- SURRENDER SYSTEM
+------------------------------------------------------------------------
+local pendingSurrenderColor = ""   -- colour awaiting confirmation
+local surrenderedColors     = {}   -- set of colours that have surrendered this session
+
+-- Remove scalable models within radius 14 (XZ) of the player's side table.
+-- Returns the count removed.
+local function removeStagedModels(colorName)
+    local tableCfg = nil
+    for _, cfg in ipairs(SIDE_TABLE_CFG) do
+        if cfg.name == colorName then tableCfg = cfg; break end
+    end
+    if not tableCfg then return 0 end
+    local r2 = 14 * 14
+    local removed = 0
+    for _, obj in ipairs(getAllObjects()) do
+        if isScalable(obj) then
+            local p = obj.getPosition()
+            local dx = p.x - tableCfg.pos[1]
+            local dz = p.z - tableCfg.pos[3]
+            if dx * dx + dz * dz <= r2 then
+                obj.destruct()
+                removed = removed + 1
+            end
+        end
+    end
+    return removed
+end
+
+-- Remove data cards belonging to this player colour and rebuild physicals.
+local function removePlayerDataCards(colorName)
+    local removed = 0
+    for i = #dataCards, 1, -1 do
+        if dataCards[i].playerColor == colorName then
+            table.remove(dataCards, i)
+            removed = removed + 1
+        end
+    end
+    if removed > 0 then
+        refreshDataCardsUI()
+        Wait.frames(function() respawnAllPhysicalDataCards() end, 2)
+    end
+    return removed
+end
+
+-- Remove stratagems belonging to this player colour and rebuild physicals.
+local function removePlayerStratagems(colorName)
+    local removed = 0
+    for i = #stratagems, 1, -1 do
+        if stratagems[i].playerColor == colorName then
+            table.remove(stratagems, i)
+            removed = removed + 1
+        end
+    end
+    if removed > 0 then
+        refreshStrategemsUI()
+        Wait.frames(function() respawnAllPhysicalStratagems() end, 4)
+    end
+    return removed
+end
+
+-- Execute the full surrender cleanup for a given colour.
+local function doSurrenderCleanup(colorName)
+    surrenderedColors[colorName] = true
+
+    local label = seatLabel(colorName)  -- Steam name or colour name
+    local models  = removeStagedModels(colorName)
+    local cards   = removePlayerDataCards(colorName)
+    local strats  = removePlayerStratagems(colorName)
+
+    -- Broadcast to all seated players
+    local msg = string.format(
+        "⚑  %s (%s) has SURRENDERED.\n" ..
+        "   Removed: %d staged model(s) · %d data card(s) · %d stratagem(s).\n" ..
+        "   Deployed models on the main board must be removed manually.",
+        label, colorName, models, cards, strats)
+    for _, p in ipairs(Player.getPlayers()) do
+        if p.seated then
+            printToColor(msg, p.color, {r=1, g=0.27, b=0.27})
+        end
+    end
+    log("⚑ SURRENDER: " .. label .. " (" .. colorName .. ")")
+end
+
+-- Called by the '⚑ Surrender' toolbar button or !surrender chat command.
+-- Shows the confirmation panel for the requesting player.
+function initiateSurrender(player)
+    if not player or not player.color then return end
+    if surrenderedColors[player.color] then
+        printToColor("You have already surrendered.", player.color, {r=1,g=0.5,b=0.5})
+        return
+    end
+    pendingSurrenderColor = player.color
+    local label = seatLabel(player.color)
+    UI.setAttribute("surrender_msg", "text",
+        label .. " (" .. player.color .. ") is about to surrender.")
+    UI.show("surrender_panel")
+end
+
+-- Called by 'Confirm Surrender' button — player identity available (no |value).
+function confirmSurrender(player)
+    UI.hide("surrender_panel")
+    local color = pendingSurrenderColor
+    pendingSurrenderColor = ""
+    if color == "" then return end
+    doSurrenderCleanup(color)
+end
+
+-- Called by the Cancel button.
+function cancelSurrender()
+    UI.hide("surrender_panel")
+    pendingSurrenderColor = ""
+end
+
 function toggleImportPanel()
     if UI.getAttribute("import_panel", "active") == "true" then
         UI.hide("import_panel")
@@ -2332,6 +2447,10 @@ function onChat(message, player)
         toggleImportPanel()
         return false
 
+    elseif cmd == "!surrender" then
+        initiateSurrender(player)
+        return false
+
     elseif cmd == "!history" then
         if #rollHistory == 0 then
             printToColor("No rolls yet.", player.color, {r=0.7,g=0.7,b=0.7})
@@ -2420,6 +2539,7 @@ function onChat(message, player)
             "!hostonly on|off             — lock controls to host only (host only)",
             "!strats                      — open the Stratagems panel",
             "!import                      — open New Recruit / BattleScribe import panel",
+            "!surrender                   — open surrender confirmation panel",
             "!scale <pct>                 — scale all Custom_Model minis (e.g. !scale 75)",
             "!tables                      — respawn player side tables",
             "!cleartables                 — remove player side tables",
@@ -2768,6 +2888,10 @@ local function buildXml(ftcMode)
   <!-- New Recruit / BattleScribe import -->
   <Button text="📥 Import" fontSize="12" color="#1e2a3a" textColor="#88ee88"
           width="68" onClick="toggleImportPanel" />
+
+  <!-- Surrender -->
+  <Button text="⚑ Yield" fontSize="12" color="#2a0000" textColor="#ff6666"
+          width="62" onClick="initiateSurrender" />
 
   <!-- Host-only badge (hidden when off) -->
   <Text id="host_lock_badge" text="🔒 HOST" fontSize="11" fontStyle="Bold"
@@ -3382,6 +3506,8 @@ local function buildXml(ftcMode)
               fontSize="11" color="#f4a261" alignment="MiddleLeft" height="15" />
         <Text text="📥 Import — paste BattleScribe XML to import units + strats from New Recruit"
               fontSize="11" color="#88ee88" alignment="MiddleLeft" height="15" />
+        <Text text="⚑ Yield — open surrender confirmation (removes staged models + cards)"
+              fontSize="11" color="#ff6666" alignment="MiddleLeft" height="15" />
 
         <!-- ── NEW RECRUIT / BATTLESCRIBE IMPORT ─────────────────── -->
         <Text text=" " fontSize="6" height="4" />
@@ -3672,6 +3798,41 @@ local function buildXml(ftcMode)
         %s
       </VerticalLayout>
     </ScrollView>
+
+  </VerticalLayout>
+</Panel>
+
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SURRENDER CONFIRMATION PANEL
+     ══════════════════════════════════════════════════════════════════ -->
+<Panel id="surrender_panel" active="false"
+       position="0 0 0" width="360" height="230"
+       color="#1a0000" allowDragging="true"
+       showAnimation="Grow" hideAnimation="Shrink">
+  <VerticalLayout padding="12 12 12 12" spacing="8">
+
+    <Text text="⚑  SURRENDER" fontSize="20" fontStyle="Bold"
+          color="#ff4444" alignment="MiddleCenter" height="30" />
+
+    <Text id="surrender_msg" text=""
+          fontSize="13" color="#ffaaaa" alignment="MiddleCenter" height="18" />
+
+    <Text text="Staged models, data cards &amp; stratagems will be removed."
+          fontSize="11" color="#886666" alignment="MiddleCenter" height="15" />
+    <Text text="Deployed models on the main board must be removed manually."
+          fontSize="11" color="#664444" alignment="MiddleCenter" height="15" />
+
+    <Text text=" " fontSize="4" height="4" />
+
+    <HorizontalLayout height="38" spacing="10">
+      <Button text="Cancel" fontSize="13"
+              color="#1a1a2e" textColor="#aaaacc"
+              flexibleWidth="1" height="38" onClick="cancelSurrender" />
+      <Button text="⚑ Confirm Surrender" fontSize="13"
+              color="#3a0000" textColor="#ff4444"
+              flexibleWidth="1" height="38" onClick="confirmSurrender" />
+    </HorizontalLayout>
 
   </VerticalLayout>
 </Panel>

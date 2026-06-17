@@ -62,6 +62,41 @@ local SIDE_TABLE_CFG = {
 }
 local sideTableGuids = {}
 
+-- Return the seated player's Steam name for a TTS seat colour,
+-- falling back to the colour name when the seat is empty.
+local function seatLabel(colorName)
+    local p = Player[colorName]
+    if p and p.seated then
+        return p.steam_name ~= "" and p.steam_name or colorName
+    end
+    return colorName
+end
+
+-- Rename all side tables (and dice mats in FTC mode) to reflect current players.
+function refreshSideTableNames()
+    for i, guid in ipairs(sideTableGuids) do
+        local obj = getObjectFromGUID(guid)
+        local cfg = SIDE_TABLE_CFG[i]
+        if obj and cfg then
+            local label = seatLabel(cfg.name)
+            obj.setName(label .. " — Player Area")
+            obj.setDescription("Dice · Tokens · Reserves")
+        end
+    end
+    if FTC_PRESENT then
+        local mats = {}
+        for _, obj in ipairs(getAllObjects()) do
+            if obj.hasTag("DiceMat") then
+                table.insert(mats, obj)
+            end
+        end
+        for i, mat in ipairs(mats) do
+            local cfg = SIDE_TABLE_CFG[((i - 1) % #SIDE_TABLE_CFG) + 1]
+            mat.setName("DiceMat — " .. seatLabel(cfg.name))
+        end
+    end
+end
+
 -- Spawn (or re-spawn) all six side tables.
 function spawnSideTables()
     clearSideTables()
@@ -73,7 +108,8 @@ function spawnSideTables()
             scale    = {7, 0.2, 5},
             color    = cfg.clr,
         })
-        obj.setName(cfg.name .. " — Player Area")
+        local label = seatLabel(cfg.name)
+        obj.setName(label .. " — Player Area")
         obj.setDescription("Dice · Tokens · Reserves")
         obj.addTag(SIDE_TABLE_TAG)
         table.insert(sideTableGuids, obj.getGUID())
@@ -100,7 +136,7 @@ function positionDiceMatsForFTC()
         local targetPos = { cfg.pos[1], cfg.pos[2] + 0.35, cfg.pos[3] }
         mat.setPositionSmooth(targetPos, false, true)
         mat.setRotationSmooth({ cfg.rot[1], cfg.rot[2], cfg.rot[3] })
-        mat.setName("DiceMat — " .. cfg.name)
+        mat.setName("DiceMat — " .. seatLabel(cfg.name))
     end
     log(#mats .. " dice mat(s) moved to player side tables.")
 end
@@ -1381,8 +1417,20 @@ function ysSetUnit()
 end
 
 ------------------------------------------------------------------------
--- DICE MAT — collision detection
+-- DICE MAT — collision detection / PLAYER SEAT EVENTS
 ------------------------------------------------------------------------
+function onPlayerConnect(player)
+    Wait.frames(function() refreshSideTableNames() end, 5)
+end
+
+function onPlayerDisconnect(player)
+    Wait.frames(function() refreshSideTableNames() end, 5)
+end
+
+function onPlayerChangeColor(player)
+    Wait.frames(function() refreshSideTableNames() end, 5)
+end
+
 function onObjectCollisionEnter(registered_object, collision_info)
     local obj = collision_info.collision_object
     if not obj then return end

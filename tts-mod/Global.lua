@@ -2217,17 +2217,36 @@ local function parseBSUnits(xml)
         end
         if modelCount == 0 then modelCount = 1 end
 
-        -- Find W (wounds) characteristic in a Unit profile
+        -- Extract all 10th-ed stats from the Unit profile characteristics.
         local woundsPerModel = 1
+        local M, T, Sv, Ld, OC = "", "", "", "", ""
         for profTag, profBody in block:gmatch('(<profile[^>]+>)(.-)</profile>') do
             local pt = xmlAttr(profTag, "profileTypeName"):lower()
             if pt == "unit" or pt == "" then
                 local chars = parseCharacteristics(profBody)
                 local w = tonumber(chars["w"] or chars["wounds"] or "")
-                if w and w > 0 then
-                    woundsPerModel = w
-                    break
-                end
+                if w and w > 0 then woundsPerModel = w end
+                M  = chars["m"]  or chars["movement"]          or ""
+                T  = chars["t"]  or chars["toughness"]         or ""
+                Sv = chars["sv"] or chars["save"]              or ""
+                Ld = chars["ld"] or chars["leadership"]        or ""
+                OC = chars["oc"] or chars["objective control"] or chars["oc"] or ""
+                break
+            end
+        end
+
+        -- Faction: first category that is not a generic keyword/rule type.
+        local GENERIC_CATS = {
+            infantry=true, character=true, core=true, vehicle=true,
+            monster=true, fly=true, ["dedicated transport"]=true,
+            battleline=true, ["epic hero"]=true, grenades=true,
+            psyker=true, smoke=true, walker=true,
+        }
+        local faction = ""
+        for catTag in block:gmatch('<category[^>]+>') do
+            local cn = xmlAttr(catTag, "name")
+            if cn ~= "" and not GENERIC_CATS[cn:lower()] then
+                faction = cn; break
             end
         end
 
@@ -2235,6 +2254,13 @@ local function parseBSUnits(xml)
             name           = unitName,
             woundsPerModel = woundsPerModel,
             models         = modelCount,
+            M              = M,
+            T              = T,
+            Sv             = Sv,
+            W              = tostring(woundsPerModel),
+            Ld             = Ld,
+            OC             = OC,
+            faction        = faction,
         }
         ::continue::
     end
@@ -2287,6 +2313,35 @@ local function parseBSStratagems(xml)
 end
 
 -- Called by "🧬 Import Units" button in the Import panel.
+-- Add parsed units as data cards. Returns added, skipped counts.
+local function nrAddDataCards(units, playerColor)
+    local added, skipped = 0, 0
+    for _, u in ipairs(units) do
+        if #dataCards >= MAX_DATACARDS then
+            skipped = skipped + 1
+        else
+            dataCards[#dataCards + 1] = {
+                name        = u.name,
+                faction     = u.faction or "",
+                M           = u.M       or "",
+                T           = u.T       or "",
+                Sv          = u.Sv      or "",
+                W           = u.W       or "",
+                Ld          = u.Ld      or "",
+                OC          = u.OC      or "",
+                notes       = "",
+                playerColor = playerColor or "",
+            }
+            added = added + 1
+        end
+    end
+    if added > 0 then
+        refreshDataCardsUI()
+        Wait.frames(function() respawnAllPhysicalDataCards() end, 4)
+    end
+    return added, skipped
+end
+
 function nrImportUnits(player)
     if not checkPerm(player) then return end
     local xml = UI.getValue("nr_xml_input")
@@ -2300,17 +2355,24 @@ function nrImportUnits(player)
             "✗ No units found — make sure this is a valid BattleScribe .ros export.")
         return
     end
-    local added, skipped = 0, 0
+    local color = player and player.color or ""
+    -- Wound tracker
+    local wtAdded, wtSkipped = 0, 0
     for _, u in ipairs(units) do
         if #woundTracker < MAX_UNITS then
             addUnit(u.name, u.woundsPerModel, u.models)
-            added = added + 1
+            wtAdded = wtAdded + 1
         else
-            skipped = skipped + 1
+            wtSkipped = wtSkipped + 1
         end
     end
-    local msg = "✓ Imported " .. added .. " unit" .. (added == 1 and "" or "s")
-    if skipped > 0 then msg = msg .. "  (" .. skipped .. " skipped — tracker full)" end
+    -- Data cards
+    local dcAdded, dcSkipped = nrAddDataCards(units, color)
+    local msg = string.format("✓ %d unit%s → HP tracker + %d data card%s",
+        wtAdded, wtAdded == 1 and "" or "s",
+        dcAdded, dcAdded == 1 and "" or "s")
+    if wtSkipped > 0 then msg = msg .. "  (" .. wtSkipped .. " tracker slots full)" end
+    if dcSkipped > 0 then msg = msg .. "  (" .. dcSkipped .. " card slots full)" end
     UI.setAttribute("nr_status", "text", msg)
     log("[NR Import] " .. msg)
 end
@@ -2361,7 +2423,8 @@ function nrImportAll(player)
         UI.setAttribute("nr_status", "text", "✗ Paste BattleScribe XML first.")
         return
     end
-    -- Run units
+    local color = player and player.color or ""
+    -- Units → wound tracker + data cards
     local units  = parseBSUnits(xml)
     local uAdded = 0
     for _, u in ipairs(units) do
@@ -2370,10 +2433,10 @@ function nrImportAll(player)
             uAdded = uAdded + 1
         end
     end
-    -- Run strats
+    local dcAdded = (nrAddDataCards(units, color))
+    -- Stratagems
     local strats = parseBSStratagems(xml)
     local sAdded = 0
-    local color  = player and player.color or ""
     for _, s in ipairs(strats) do
         if #stratagems < MAX_STRATAGEMS then
             stratagems[#stratagems + 1] = {
@@ -2390,11 +2453,16 @@ function nrImportAll(player)
         refreshStrategemsUI()
         Wait.frames(function() respawnAllPhysicalStratagems() end, 2)
     end
-    local msg = "✓ " .. uAdded .. " unit" .. (uAdded == 1 and "" or "s") ..
-                "  +  " .. sAdded .. " stratagem" .. (sAdded == 1 and "" or "s") .. " imported"
     if uAdded == 0 and sAdded == 0 then
-        msg = "✗ Nothing found — check this is a valid BattleScribe .ros export"
+        UI.setAttribute("nr_status", "text",
+            "✗ Nothing found — check this is a valid BattleScribe .ros export")
+        return
     end
+    local msg = string.format(
+        "✓ %d unit%s → HP tracker + %d data card%s  ·  %d stratagem%s",
+        uAdded,   uAdded  == 1 and "" or "s",
+        dcAdded,  dcAdded == 1 and "" or "s",
+        sAdded,   sAdded  == 1 and "" or "s")
     UI.setAttribute("nr_status", "text", msg)
     log("[NR Import] " .. msg)
 end

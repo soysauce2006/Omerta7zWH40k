@@ -88,6 +88,9 @@ local SCALE_EXCLUDE_TAGS = { "WH40K_SideTable", "WH40K_DataCard", "DiceMat" }
 local function isScalable(obj)
     if obj.hasTag("Miniature") then return true end   -- explicit opt-in
     if obj.type == "Custom_Model" then
+        -- When FTC is loaded, skip untagged Custom_Models — they may be FTC
+        -- unit figures. Only scale objects the user explicitly tagged "Miniature".
+        if FTC_PRESENT then return false end
         for _, tag in ipairs(SCALE_EXCLUDE_TAGS) do
             if obj.hasTag(tag) then return false end
         end

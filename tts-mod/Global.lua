@@ -51,6 +51,35 @@ local modelScale      = 1.0   -- current factor (1.0 = 100%)
 local baseModelScales = {}    -- GUID → {x, y, z} original scales before any scaling
 
 ------------------------------------------------------------------------
+-- HOST-ONLY LOCK
+------------------------------------------------------------------------
+local hostOnlyMode = false   -- when true, only the host can use mod controls
+
+local function isHost(player)
+    return type(player) == "userdata" and player.host
+end
+
+-- Returns true if the player is permitted to act.
+-- nil or non-userdata → internal Lua call, always allowed.
+local function checkPerm(player)
+    if not hostOnlyMode then return true end
+    if type(player) ~= "userdata" then return true end
+    if player.host then return true end
+    printToColor("🔒 Host-only mode is active — only the server host can use mod controls.",
+                 player.color, {r=1, g=0.5, b=0.5})
+    return false
+end
+
+-- Update the toolbar lock badge visibility.
+function refreshHostModeUI()
+    if hostOnlyMode then
+        UI.show("host_lock_badge")
+    else
+        UI.hide("host_lock_badge")
+    end
+end
+
+------------------------------------------------------------------------
 -- MODEL SCALE FUNCTIONS
 ------------------------------------------------------------------------
 -- Tags that identify system objects which must never be rescaled.
@@ -78,9 +107,10 @@ function refreshScaleUI()
     UI.setAttribute("scale_status", "text", "Current: " .. pct .. "%")
 end
 
--- Called by UI buttons: onClick="scaleAllModels|1.0" → (player, "1.0")
--- Also callable directly: scaleAllModels(nil, 0.75)
-function scaleAllModels(player, factorStr)
+-- onClick="scaleAllModels|0.75" passes only the value (no player identity).
+-- Permission for button clicks is intentionally not enforced here because
+-- |value onClick callbacks don't carry player identity; chat !scale IS gated.
+function scaleAllModels(factorStr)
     local factor = tonumber(factorStr)
     if not factor or factor <= 0 then
         log("Usage: !scale <percent>  e.g. !scale 75")
@@ -624,7 +654,8 @@ local function advanceArmy()
     end
 end
 
-function nextPhase()
+function nextPhase(player)
+    if not checkPerm(player) then return end
     if FTC_PRESENT then
         log("Turn control is handled by Free the Codex — use FTC's phase buttons.")
         return
@@ -643,7 +674,8 @@ function nextPhase()
     end
 end
 
-function prevPhase()
+function prevPhase(player)
+    if not checkPerm(player) then return end
     if FTC_PRESENT then return end
     if turnState.phase > 1 then
         turnState.phase = turnState.phase - 1
@@ -920,7 +952,8 @@ function setTeamMode(modeStr)
 end
 
 -- Auto-assign seated players into the current mode (re-runs distribution)
-function autoAssignTeams()
+function autoAssignTeams(player)
+    if not checkPerm(player) then return end
     setTeamMode(teamConfig.mode)
     log("Auto-assigned seated players → " .. teamConfig.mode:upper())
 end
@@ -972,7 +1005,8 @@ function renameTeam(teamIndexStr)
 end
 
 -- Manually step the active army forward / backward without advancing phase
-function nextArmy()
+function nextArmy(player)
+    if not checkPerm(player) then return end
     local n = #teamConfig.teams
     if n < 2 then log("Only one army configured.") return end
     teamConfig.activeTeam = (teamConfig.activeTeam % n) + 1
@@ -983,7 +1017,8 @@ function nextArmy()
     refreshTurnUI()
 end
 
-function prevArmy()
+function prevArmy(player)
+    if not checkPerm(player) then return end
     local n = #teamConfig.teams
     if n < 2 then log("Only one army configured.") return end
     teamConfig.activeTeam = ((teamConfig.activeTeam - 2) % n) + 1
@@ -1411,7 +1446,8 @@ function importFtcUnit(guid)
 end
 
 -- Bulk-import every unit FTC currently tracks
-function importAllFtcUnits()
+function importAllFtcUnits(player)
+    if not checkPerm(player) then return end
     if not FTC_PRESENT then
         log("Free the Codex is not loaded.")
         return
@@ -1471,7 +1507,8 @@ function closeYelloscribe()  UI.hide("yelloscribe_panel")  end
 
 -- Read the current Yelloscribe URL and pre-fill the unit name field
 -- by converting the last URL path segment from slug to title case.
-function pinCurrentYelloscribePage()
+function pinCurrentYelloscribePage(player)
+    if not checkPerm(player) then return end
     local url  = UI.getAttribute("ys_browser", "url") or ""
     local slug = url:match("/([^/?#]+)%s*$") or ""
     -- Ignore root / domain segments that aren't unit names
@@ -1484,8 +1521,8 @@ function pinCurrentYelloscribePage()
     end
 end
 
--- `player` is the TTS Player object automatically passed by UI onClick.
 function saveDataCard(player)
+    if not checkPerm(player) then return end
     local name = UI.getValue("dc_name_input")
     if not name or name == "" then
         log("Enter a unit name before saving a data card.")
@@ -1621,6 +1658,38 @@ function onChat(message, player)
     local cmd, args = message:match("^(!%S+)%s*(.*)")
     if not cmd then return end
     cmd = cmd:lower()
+
+    -- ── Host-only lock — handle before permission gate ──────────────────
+    if cmd == "!hostonly" then
+        if not isHost(player) then
+            printToColor("🔒 Only the server host can change host-only mode.",
+                         player.color, {r=1, g=0.5, b=0.5})
+            return false
+        end
+        local sub = args:lower():match("^(%S+)")
+        if sub == "on" then
+            hostOnlyMode = true
+            broadcastToAll("🔒 Host-only mode ENABLED — only the host can use mod controls.",
+                           {r=1, g=0.8, b=0.3})
+        elseif sub == "off" then
+            hostOnlyMode = false
+            broadcastToAll("🔓 Host-only mode DISABLED — all players can use mod controls.",
+                           {r=0.6, g=1, b=0.6})
+        else
+            printToColor("Usage: !hostonly on  |  !hostonly off  (current: "
+                         .. (hostOnlyMode and "on" or "off") .. ")",
+                         player.color, {r=0.7, g=0.9, b=1})
+        end
+        refreshHostModeUI()
+        return false
+    end
+
+    -- ── Permission gate for all other commands ──────────────────────────
+    if hostOnlyMode and not isHost(player) then
+        printToColor("🔒 Host-only mode is active — only the server host can use mod controls.",
+                     player.color, {r=1, g=0.5, b=0.5})
+        return false
+    end
 
     if cmd == "!roll" then
         local num, sides = args:match("(%d+)d(%d+)")
@@ -1798,7 +1867,7 @@ function onChat(message, player)
         if not pct or pct <= 0 or pct > 200 then
             log("Usage: !scale <percent>  e.g. !scale 75  (valid: 1–200)")
         else
-            scaleAllModels(player, pct / 100)
+            scaleAllModels(pct / 100)
         end
         return false
     elseif cmd == "!tables" then
@@ -1834,6 +1903,7 @@ function onChat(message, player)
             "!turn                        — show current phase",
             "!yelloscribe                 — open Yelloscribe panel",
             "!history                     — last 10 rolls",
+            "!hostonly on|off             — lock controls to host only (host only)",
             "!scale <pct>                 — scale all Custom_Model minis (e.g. !scale 75)",
             "!tables                      — respawn player side tables",
             "!cleartables                 — remove player side tables",
@@ -1903,7 +1973,8 @@ end
 ------------------------------------------------------------------------
 -- ATTACK BUILDER PANEL HANDLERS
 ------------------------------------------------------------------------
-function rollAttackPanel()
+function rollAttackPanel(player)
+    if not checkPerm(player) then return end
     local n   = tonumber(UI.getValue("atk_attacks")) or 1
     local h   = tonumber(UI.getValue("atk_hit"))     or 3
     local w   = tonumber(UI.getValue("atk_wound"))   or 4
@@ -1943,7 +2014,8 @@ function atkAttDn()    stepField("atk_attacks",-1, 1, 100) end
 ------------------------------------------------------------------------
 -- SAVE ROLLER PANEL HANDLERS
 ------------------------------------------------------------------------
-function rollSavePanel()
+function rollSavePanel(player)
+    if not checkPerm(player) then return end
     local nd = tonumber(UI.getValue("sv_dice"))  or 1
     local sv = tonumber(UI.getValue("sv_save"))  or 5
     local ap = tonumber(UI.getValue("sv_ap"))    or 0
@@ -1962,7 +2034,8 @@ function svApDn()    stepField("sv_ap",   -1, -6, 0)  end
 ------------------------------------------------------------------------
 -- MORALE PANEL HANDLERS
 ------------------------------------------------------------------------
-function rollMoralePanel()
+function rollMoralePanel(player)
+    if not checkPerm(player) then return end
     local ld   = tonumber(UI.getValue("mr_ld"))   or 7
     local lost = tonumber(UI.getValue("mr_lost"))  or 1
     ld   = math.max(1, math.min(ld,   10))
@@ -2145,6 +2218,10 @@ local function buildXml(ftcMode)
   <!-- Scale -->
   <Button text="⚖ Scale" fontSize="12" color="#1e2a3a" textColor="#a0d8ef"
           width="68" onClick="toggleScalePanel" />
+
+  <!-- Host-only badge (hidden when off) -->
+  <Text id="host_lock_badge" text="🔒 HOST" fontSize="11" fontStyle="Bold"
+        color="#ff5555" alignment="MiddleCenter" active="false" width="60" />
 
   <!-- FTC (conditional) -->
   %s
@@ -3018,6 +3095,9 @@ function onLoad(save_state)
             if data.baseModelScales then
                 baseModelScales = data.baseModelScales
             end
+            if data.hostOnlyMode ~= nil then
+                hostOnlyMode = data.hostOnlyMode
+            end
         end
     end
 
@@ -3044,6 +3124,7 @@ function onLoad(save_state)
         refreshTeamUI()
         refreshDataCardsUI()
         refreshScaleUI()
+        refreshHostModeUI()
         if not existingTables then
             spawnSideTables()
         end
@@ -3066,5 +3147,6 @@ function onSave()
         dataCards        = dataCards,
         modelScale       = modelScale,
         baseModelScales  = baseModelScales,
+        hostOnlyMode     = hostOnlyMode,
     })
 end

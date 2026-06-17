@@ -53,7 +53,8 @@ local baseModelScales = {}    -- GUID → {x, y, z} original scales before any s
 ------------------------------------------------------------------------
 -- HOST-ONLY LOCK
 ------------------------------------------------------------------------
-local hostOnlyMode = false   -- when true, only the host can use mod controls
+local hostOnlyMode    = false  -- when true, only the host can use mod controls
+local toolbarVisible  = true   -- toggled by toggleToolbar() / !toolbar
 
 local function isHost(player)
     return type(player) == "userdata" and player.host
@@ -1936,6 +1937,17 @@ function cancelSurrender()
     pendingSurrenderColor = ""
 end
 
+function toggleToolbar()
+    if toolbarVisible then
+        UI.hide("toolbar")
+        UI.setAttribute("toolbar_toggle", "text", "▲ WH40K")
+    else
+        UI.show("toolbar")
+        UI.setAttribute("toolbar_toggle", "text", "≡")
+    end
+    toolbarVisible = not toolbarVisible
+end
+
 function toggleImportPanel()
     if UI.getAttribute("import_panel", "active") == "true" then
         UI.hide("import_panel")
@@ -2454,6 +2466,10 @@ function onChat(message, player)
         initiateSurrender(player)
         return false
 
+    elseif cmd == "!toolbar" then
+        toggleToolbar()
+        return false
+
     elseif cmd == "!history" then
         if #rollHistory == 0 then
             printToColor("No rolls yet.", player.color, {r=0.7,g=0.7,b=0.7})
@@ -2543,6 +2559,7 @@ function onChat(message, player)
             "!strats                      — open the Stratagems panel",
             "!import                      — open New Recruit / BattleScribe import panel",
             "!surrender                   — open surrender confirmation panel",
+            "!toolbar                     — show / hide the toolbar",
             "!scale <pct>                 — scale all Custom_Model minis (e.g. !scale 75)",
             "!tables                      — respawn player side tables",
             "!cleartables                 — remove player side tables",
@@ -3904,6 +3921,12 @@ local function buildXml(ftcMode)
   </VerticalLayout>
 </Panel>
 
+
+<!-- Persistent toolbar toggle — always visible, survives toolbar hide -->
+<Button id="toolbar_toggle" text="≡" fontSize="13" fontStyle="Bold"
+        position="600 -348 0" width="52" height="26"
+        color="#12121e" textColor="#e63946"
+        onClick="toggleToolbar" />
 
 </Canvas>
     ]],

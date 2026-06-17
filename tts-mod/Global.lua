@@ -1581,6 +1581,27 @@ function closeYelloscribe()  UI.hide("yelloscribe_panel")  end
 
 -- ── Data Cards ────────────────────────────────────────────────────────
 
+-- Read the current Yelloscribe URL and pre-fill the stratagem name field
+-- in the Yelloscribe sidebar by converting the URL slug to title case.
+function pinStratFromURL(player)
+    if not checkPerm(player) then return end
+    local url  = UI.getAttribute("ys_browser", "url") or ""
+    local slug = url:match("/([^/?#]+)%s*$") or ""
+    if slug ~= "" and not slug:find("%.") and slug ~= "yelloscribe.com" then
+        local name = slug:gsub("[%-_]+", " ")
+                        :gsub("(%a)([%a]*)", function(a, b)
+                            return a:upper() .. b:lower()
+                         end)
+        UI.setValue("ys_st_name_input", name)
+        -- Open the strat section if it was collapsed
+        UI.setAttribute("ys_strat_section", "active", "true")
+        log("⚡ Stratagem name pre-filled: " .. name ..
+            " — set CP, phase, desc, then click Save Strat")
+    else
+        log("⚡ No stratagem slug found in URL — navigate to a stratagem page first.")
+    end
+end
+
 -- Read the current Yelloscribe URL and pre-fill the unit name field
 -- by converting the last URL path segment from slug to title case.
 function pinCurrentYelloscribePage(player)
@@ -1678,6 +1699,48 @@ end
 ------------------------------------------------------------------------
 -- STRATAGEM PANEL UI FUNCTIONS
 ------------------------------------------------------------------------
+-- Save a stratagem entered via the Yelloscribe sidebar form.
+-- Shares the same stratagems[] list and physical notecard spawner.
+function saveStratFromYS(player)
+    if not checkPerm(player) then return end
+    local name = UI.getValue("ys_st_name_input")
+    if not name or name == "" then
+        log("⚡ Enter a stratagem name (or click 'Pin from URL') first.")
+        return
+    end
+    if #stratagems >= MAX_STRATAGEMS then
+        log("Stratagem limit (" .. MAX_STRATAGEMS .. ") reached — remove one first.")
+        return
+    end
+    local cp = math.max(1, math.min(3, tonumber(UI.getValue("ys_st_cp_input")) or 1))
+    local s  = {
+        name        = name,
+        cp          = cp,
+        phase       = UI.getValue("ys_st_phase_input") or "Any",
+        desc        = UI.getValue("ys_st_desc_input")  or "",
+        playerColor = player and player.color or "",
+    }
+    stratagems[#stratagems + 1] = s
+    -- Clear sidebar inputs
+    for _, id in ipairs({"ys_st_name_input", "ys_st_phase_input", "ys_st_desc_input"}) do
+        UI.setValue(id, "")
+    end
+    UI.setValue("ys_st_cp_input", "1")
+    -- Refresh both the standalone strat panel and the sidebar status
+    refreshStrategemsUI()
+    local n = #stratagems
+    UI.setAttribute("ys_st_status", "text",
+        n .. " stratagem" .. (n == 1 and "" or "s") .. " saved")
+    -- Spawn the physical notecard on the player's side table
+    local playerSlot = 0
+    for _, st in ipairs(stratagems) do
+        if st.playerColor == s.playerColor then playerSlot = playerSlot + 1 end
+    end
+    spawnStragegemObject(s, playerSlot)
+    log("⚡ Stratagem saved: " .. name .. " [CP:" .. cp .. "]" ..
+        (s.playerColor ~= "" and (" [" .. s.playerColor .. "]") or ""))
+end
+
 function saveStratagem(player)
     if not checkPerm(player) then return end
     local name = UI.getValue("st_name_input")
@@ -1739,9 +1802,12 @@ function refreshStrategemsUI()
         end
     end
     local n = #stratagems
-    UI.setAttribute("st_status", "text",
+    local statusTxt = n > 0 and (n .. " stratagem" .. (n == 1 and "" or "s") .. " saved")
+                              or "No stratagems yet — fill in the form and click Add"
+    UI.setAttribute("st_status",    "text", statusTxt)
+    UI.setAttribute("ys_st_status", "text",
         n > 0 and (n .. " stratagem" .. (n == 1 and "" or "s") .. " saved")
-              or "No stratagems yet — fill in the form and click Add")
+              or "No stratagems saved yet")
 end
 
 function toggleStrategemsPanel()
@@ -2917,11 +2983,55 @@ local function buildXml(ftcMode)
               fontSize="10" color="#555577" alignment="MiddleCenter" height="13" />
 
         <!-- Scrollable list of pinned cards -->
-        <ScrollView flexibleHeight="1" scrollSensitivity="30">
+        <ScrollView height="180" scrollSensitivity="30">
           <VerticalLayout spacing="3">
             %s
           </VerticalLayout>
         </ScrollView>
+
+        <!-- ── Stratagems sub-section ──────────────────────────────── -->
+        <Text text="────────────────" fontSize="9" color="#2a2a44"
+              alignment="MiddleCenter" height="10" />
+
+        <Text text="⚡ Stratagems" fontSize="13" fontStyle="Bold"
+              color="#f4a261" alignment="MiddleCenter" height="18" />
+
+        <Panel id="ys_strat_section" active="true" color="Clear" padding="0 0 0 0">
+          <VerticalLayout spacing="3">
+
+            <!-- Name — pre-filled by Pin Strat from URL -->
+            <InputField id="ys_st_name_input" placeholder="Strat name (auto-fills from URL)"
+                        fontSize="12" height="26" />
+
+            <!-- CP + Phase -->
+            <HorizontalLayout height="26" spacing="3">
+              <Text text="CP" fontSize="11" color="#888899"
+                    alignment="MiddleCenter" width="22" />
+              <InputField id="ys_st_cp_input" text="1" fontSize="12"
+                          width="34" height="26" characterValidation="Integer" />
+              <Text text="Phase" fontSize="11" color="#888899"
+                    alignment="MiddleCenter" width="36" />
+              <InputField id="ys_st_phase_input" placeholder="e.g. Fight"
+                          fontSize="12" height="26" flexibleWidth="1" />
+            </HorizontalLayout>
+
+            <!-- Description -->
+            <InputField id="ys_st_desc_input" placeholder="Effect / reminder text…"
+                        fontSize="11" height="42" lineType="MultiLineNewline" />
+
+            <!-- Buttons -->
+            <HorizontalLayout height="28" spacing="3">
+              <Button text="⚡ Pin from URL" fontSize="11" color="#1a0e00" textColor="#f4a261"
+                      flexibleWidth="1" height="28" onClick="pinStratFromURL" />
+              <Button text="✚ Save Strat" fontSize="11" color="#0a1a0a" textColor="#88ee88"
+                      flexibleWidth="1" height="28" onClick="saveStratFromYS" />
+            </HorizontalLayout>
+
+            <Text id="ys_st_status" text="No stratagems saved yet"
+                  fontSize="10" color="#555577" alignment="MiddleCenter" height="13" />
+
+          </VerticalLayout>
+        </Panel>
 
       </VerticalLayout>
     </HorizontalLayout>

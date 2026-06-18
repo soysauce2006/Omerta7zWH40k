@@ -29,3 +29,9 @@ id = "0RSnEc7b0Tc9ZxBRuRtz1"
 uri = "file://tts-mod/thumbnail.png"
 type = "image"
 title = "WH40K TTS Mod — Workshop Thumbnail"
+
+[[outputs]]
+id = "dOFT_ul6Wbfd2BWarm7qK"
+uri = "file://tts-mod/WH40K-Mod-Steam-Upload.zip"
+type = "unspecified"
+title = "WH40K TTS Mod — Steam Workshop Upload Package"

@@ -1175,7 +1175,6 @@ local function refreshWoundUI()
 
             UI.setAttribute("wt_models_".. i, "text",       modelStr)
             UI.setAttribute("wt_hp_"    .. i, "text",       hp .. "/" .. max)
-            UI.setAttribute("wt_bar_"   .. i, "fillAmount",  tostring(pct / 100))
             UI.setAttribute("wt_bar_"   .. i, "color",       barCol)
 
             local ftcBadge = (unit.ftcGuid and unit.ftcGuid ~= "") and "⚙" or " "
@@ -2995,10 +2994,8 @@ local function buildWoundRows()
         <Text id="wt_hp_%d" text="0/0" fontSize="12" color="#f4a261"
               alignment="MiddleCenter" width="44" />
 
-        <!-- HP bar -->
-        <Image id="wt_bar_%d" image="white" color="#2dc653"
-               width="56" height="12" fillAmount="1" type="Filled"
-               fillMethod="Horizontal" fillOrigin="0" />
+        <!-- HP bar (Panel avoids null-ref from unresolved image sprite) -->
+        <Panel id="wt_bar_%d" color="#2dc653" width="56" height="12" />
 
         <!-- Wound / heal buttons -->
         <Button text="−" fontSize="15" width="24" height="26"

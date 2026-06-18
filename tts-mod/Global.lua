@@ -2178,10 +2178,8 @@ local function parseBSUnits(xml)
         local tag = xml:sub(ts, te)
         pos = te + 1
 
-        if xmlAttr(tag, "type") ~= "unit" then goto continue end
-
         local unitName = xmlAttr(tag, "name")
-        if unitName == "" then goto continue end
+        if xmlAttr(tag, "type") == "unit" and unitName ~= "" then
 
         -- Find the closing </selection> for this unit block.
         -- Count nested <selection> opens vs closes.
@@ -2262,7 +2260,7 @@ local function parseBSUnits(xml)
             OC             = OC,
             faction        = faction,
         }
-        ::continue::
+        end -- if type=="unit" and unitName~=""
     end
     return units
 end
@@ -2272,11 +2270,9 @@ end
 local function parseBSStratagems(xml)
     local strats = {}
     for profTag, profBody in xml:gmatch('(<profile[^>]+>)(.-)</profile>') do
-        local pt = xmlAttr(profTag, "profileTypeName"):lower()
-        if pt ~= "stratagem" then goto continue end
-
-        local name  = xmlAttr(profTag, "name")
-        if name == "" then goto continue end
+        local pt   = xmlAttr(profTag, "profileTypeName"):lower()
+        local name = xmlAttr(profTag, "name")
+        if pt == "stratagem" and name ~= "" then
 
         local chars = parseCharacteristics(profBody)
 
@@ -2307,7 +2303,7 @@ local function parseBSStratagems(xml)
             phase = phase,
             desc  = desc,
         }
-        ::continue::
+        end -- if pt=="stratagem" and name~=""
     end
     return strats
 end

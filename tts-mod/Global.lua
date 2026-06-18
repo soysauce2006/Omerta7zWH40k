@@ -3676,7 +3676,7 @@ local function buildXml(ftcMode)
 
             <!-- Description -->
             <InputField id="ys_st_desc_input" placeholder="Effect / reminder text…"
-                        fontSize="11" height="42" lineType="MultiLineNewline" />
+                        fontSize="11" height="42" />
 
             <!-- Buttons -->
             <HorizontalLayout height="28" spacing="3">
@@ -4037,7 +4037,7 @@ local function buildXml(ftcMode)
 
     <!-- Description -->
     <InputField id="st_desc_input" placeholder="Effect / reminder text..."
-                fontSize="11" height="46" lineType="MultiLineNewline" />
+                fontSize="11" height="46" />
 
     <!-- Add button -->
     <Button text="⚡ Add Stratagem" fontSize="13"
@@ -4124,8 +4124,7 @@ local function buildXml(ftcMode)
     <!-- Paste area -->
     <InputField id="nr_xml_input"
                 placeholder="&lt;?xml version=&quot;1.0&quot;...&gt;  Paste BattleScribe XML here"
-                fontSize="11" height="190"
-                lineType="MultiLineNewline" />
+                fontSize="11" height="190" />
 
     <!-- Import buttons -->
     <HorizontalLayout height="34" spacing="5">
@@ -4147,7 +4146,7 @@ local function buildXml(ftcMode)
 
     <!-- Quick tips -->
     <Text text=" " fontSize="4" height="4" />
-    <Text text="Units → fills the ❤ HP wound tracker.   Strats → fills the ⚡ Strats panel."
+    <Text text="Units → creates data reference cards.   Strats → fills the Strats panel."
           fontSize="10" color="#444466" alignment="MiddleCenter" height="13" />
     <Text text="W (wounds/model) and model count are read from the datasheet profile."
           fontSize="10" color="#444466" alignment="MiddleCenter" height="13" />
@@ -4229,7 +4228,13 @@ function onLoad(save_state)
     end
 
     -- Build and inject UI (toolbar position depends on FTC_PRESENT)
-    UI.setXml(buildXml(FTC_PRESENT))
+    local xmlOk, xmlErr = pcall(function()
+        UI.setXml(buildXml(FTC_PRESENT))
+    end)
+    if not xmlOk then
+        log("[WH40K] UI.setXml failed: " .. tostring(xmlErr))
+        printToAll("[WH40K] UI load error — check Scripting Console: " .. tostring(xmlErr), {1,0.4,0.4})
+    end
 
     -- Restore saved state
     if save_state and save_state ~= "" then

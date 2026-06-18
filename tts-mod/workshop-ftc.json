@@ -1,0 +1,20 @@
+{
+  "name": "WH40K TTS Mod — FTC Edition",
+  "description": "Companion toolkit for Free the Codex (FTC). Load FTC first — this mod auto-detects it and hands off cleanly.\n\nWHAT THIS ADDS ON TOP OF FTC\n📜 Yelloscribe rules browser — in-game access to yelloscribe.com with 🌐 Fetch Stats from Page (auto-fills M/T/Sv/W/Ld/OC)\n📌 Data cards — pin unit stat sheets as physical notecards on your side table\n⚡ Stratagems — save and reference stratagem cards; import from BattleScribe XML\n📥 BattleScribe import — paste .ros XML → instant data cards + stratagem notecards\n🪑 Player side tables — colour-coded mats around the perimeter for every seat\n🎲 Dice Mat auto-announce — tag FTC dice trays DiceMat for broadcast roll results\n⚑ Surrender — confirmation panel; removes staged models, cards, and strats for that player\n🔒 Host-only mode — lock all controls to the server host\n≡ Toolbar toggle — hide/show toolbar without losing the toggle button\n\nFTC BEHAVIOUR\n- Toolbar repositions to bottom-right (avoids FTC's left rail)\n- Turn Tracker hidden; FTC owns phase/round control\n- Teams panel syncs active army from FTC turn events\n- Model scaling (⚖) targets only Miniature-tagged objects — FTC unit models untouched\n- ForgeOrg compatible (no shared globals, no event hook collisions)\n\nDICE MATS WITH FTC\nRight-click any FTC dice tray → Tags → add DiceMat. Then run !tables. Dice rolled on tagged mats broadcast results to all players.\n\nBATTLESCRIBE IMPORT NOTE\nUnit import creates data reference cards only. Use ForgeOrg for HP tracking.\n\nType !help in chat for the full command reference.",
+  "tags": [
+    "Warhammer 40000",
+    "40K",
+    "WH40K",
+    "FTC",
+    "Free the Codex",
+    "Scripting",
+    "Companion",
+    "Stratagems",
+    "BattleScribe",
+    "ForgeOrg"
+  ],
+  "visibility": "public",
+  "file": "WH40K-FTC.json",
+  "image": "thumbnail.png",
+  "change_note": "v1.4.0 — BattleScribe data card import, Fetch Stats from Page, ForgeOrg compatible"
+}

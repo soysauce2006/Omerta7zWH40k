@@ -1,0 +1,23 @@
+{
+  "name": "WH40K TTS Mod — Solo Edition",
+  "description": "A complete standalone Warhammer 40,000 10th Edition toolkit. No other mods required. Paste Global.lua into your table's Global Lua Script slot.\n\n🎲 DICE ROLLER\nPanel with presets (D6, 2D6, D3, Scatter) and free NdS input. Tag any object DiceMat and physical dice rolled on it auto-announce results + sum to all players.\n\n⚔ ATTACK SEQUENCE\nFull Hit → Wound → Save → Damage calculator. AP applied automatically. Damage supports flat, D3, D6.\n\n🛡 ARMOUR SAVE & 💀 BATTLESHOCK\nMulti-dice save roller with AP. Battleshock test (Ld + models lost vs 2D6).\n\n⏱ TURN TRACKER\n6 WH40K phases with round counter and army cycling (!next / !prev).\n\n❤ WOUND TRACKER\nModel-aware HP — damage fills the front model first; overflow carries. Up to 12 units.\n\n👥 TEAMS & MATCH FORMATS\nSix formats: FFA, 2v1, 2v2, 3v2, 3v3, 3-Team. Auto-assign or set manually.\n\n📜 YELLOSCRIBE RULES BROWSER\nIn-game browser for yelloscribe.com. 🌐 Fetch Stats from Page auto-fills M/T/Sv/W/Ld/OC. 📌 Pin Page pre-fills unit name from URL.\n\n⚡ STRATAGEMS\nSave stratagems manually or import from BattleScribe XML. Each spawns as an amber notecard on the player's side table.\n\n📥 BATTLESCRIBE / NEW RECRUIT IMPORT\nPaste .ros XML → instant data cards + stratagem notecards. Use ForgeOrg or your preferred army manager for HP tracking.\n\n⚖ MODEL SCALING\nScale all minis to 100% / 75% / 50%. Original sizes always preserved.\n\n🪑 PLAYER SIDE TABLES\nSix colour-coded mats around the perimeter. Data cards and strat notecards spawn here.\n\n⚑ SURRENDER\nConfirmation panel — removes staged models, data cards, and stratagems for that player.\n\n🔒 HOST-ONLY MODE\nLock all controls to the server host. HP tracking stays open for all players.\n\n≡ TOOLBAR TOGGLE — hide/show toolbar at any time.\n\nFTC COMPATIBLE — auto-detects Free the Codex if loaded alongside this mod.\nFORGEORG COMPATIBLE — no shared globals or event hook collisions.\n\nType !help in chat for the full command reference. All state persists across save/load.",
+  "tags": [
+    "Warhammer 40000",
+    "40K",
+    "WH40K",
+    "Scripting",
+    "Standalone",
+    "Dice",
+    "Turn Tracker",
+    "Wound Tracker",
+    "Teams",
+    "Stratagems",
+    "BattleScribe",
+    "New Recruit",
+    "Import"
+  ],
+  "visibility": "public",
+  "file": "WH40K-Solo.json",
+  "image": "thumbnail.png",
+  "change_note": "v1.4.0 — BattleScribe data card import, Fetch Stats from Page, ForgeOrg compatible"
+}

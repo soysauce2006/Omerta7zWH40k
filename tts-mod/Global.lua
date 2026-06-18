@@ -66,7 +66,7 @@ local function checkPerm(player)
     if not hostOnlyMode then return true end
     if type(player) ~= "userdata" then return true end
     if player.host then return true end
-    printToColor("🔒 Host-only mode is active — only the server host can use mod controls.",
+    printToColor(" Host-only mode is active — only the server host can use mod controls.",
                  player.color, {r=1, g=0.5, b=0.5})
     return false
 end
@@ -1750,7 +1750,7 @@ local function applyParsedStats(r)
     end
 end
 
--- Called by the '🌐 Fetch Stats' button.
+-- Called by the ' Fetch Stats' button.
 -- Fetches the current Yelloscribe browser URL and tries to parse unit stats.
 function fetchStatsFromBrowser(player)
     if not checkPerm(player) then return end
@@ -1821,7 +1821,7 @@ function saveDataCard(player)
         if d.playerColor == dc.playerColor then playerSlot = playerSlot + 1 end
     end
     spawnDataCardObject(dc, playerSlot)
-    log("📋 Data card pinned: " .. name .. (dc.playerColor ~= "" and (" [" .. dc.playerColor .. "]") or ""))
+    log(" Data card pinned: " .. name .. (dc.playerColor ~= "" and (" [" .. dc.playerColor .. "]") or ""))
 end
 
 function removeDataCard(slotStr)
@@ -1834,7 +1834,7 @@ function removeDataCard(slotStr)
         refreshDataCardsUI()
         -- Rebuild physical cards so slot positions stay contiguous
         Wait.frames(function() respawnAllPhysicalDataCards() end, 2)
-        log("📋 Removed data card: " .. n)
+        log(" Removed data card: " .. n)
     end
 end
 
@@ -2307,7 +2307,7 @@ local function parseBSStratagems(xml)
     return strats
 end
 
--- Called by "🧬 Import Units" button in the Import panel.
+-- Called by " Import Units" button in the Import panel.
 -- Add parsed units as data cards. Returns added, skipped counts.
 local function nrAddDataCards(units, playerColor)
     local added, skipped = 0, 0
@@ -2396,7 +2396,7 @@ function nrImportStrats(player)
     log("[NR Import] " .. msg)
 end
 
--- Called by "🧬+⚡ Import All" button — runs both parsers.
+-- Called by "+⚡ Import All" button — runs both parsers.
 function nrImportAll(player)
     if not checkPerm(player) then return end
     local xml = UI.getValue("nr_xml_input")
@@ -2502,18 +2502,18 @@ function onChat(message, player)
     -- ── Host-only lock — handle before permission gate ──────────────────
     if cmd == "!hostonly" then
         if not isHost(player) then
-            printToColor("🔒 Only the server host can change host-only mode.",
+            printToColor(" Only the server host can change host-only mode.",
                          player.color, {r=1, g=0.5, b=0.5})
             return false
         end
         local sub = args:lower():match("^(%S+)")
         if sub == "on" then
             hostOnlyMode = true
-            broadcastToAll("🔒 Host-only mode ENABLED — only the host can use mod controls.",
+            broadcastToAll(" Host-only mode ENABLED — only the host can use mod controls.",
                            {r=1, g=0.8, b=0.3})
         elseif sub == "off" then
             hostOnlyMode = false
-            broadcastToAll("🔓 Host-only mode DISABLED — all players can use mod controls.",
+            broadcastToAll(" Host-only mode DISABLED — all players can use mod controls.",
                            {r=0.6, g=1, b=0.6})
         else
             printToColor("Usage: !hostonly on  |  !hostonly off  (current: "
@@ -2526,7 +2526,7 @@ function onChat(message, player)
 
     -- ── Permission gate for all other commands ──────────────────────────
     if hostOnlyMode and not isHost(player) then
-        printToColor("🔒 Host-only mode is active — only the server host can use mod controls.",
+        printToColor(" Host-only mode is active — only the server host can use mod controls.",
                      player.color, {r=1, g=0.5, b=0.5})
         return false
     end
@@ -3067,7 +3067,7 @@ local function buildXml(ftcMode)
         alignment="MiddleCenter" width="48" />
 
   <!-- Dice -->
-  <Button text="🎲 Dice"   fontSize="12" color="#1e2a3a" textColor="#7ab8f5"
+  <Button text="⚂ Dice"   fontSize="12" color="#1e2a3a" textColor="#7ab8f5"
           width="68" onClick="toggleDicePanel" />
 
   <!-- Attack -->
@@ -3075,11 +3075,11 @@ local function buildXml(ftcMode)
           width="72" onClick="toggleAttackPanel" />
 
   <!-- Save -->
-  <Button text="🛡 Save"   fontSize="12" color="#1e2a3a" textColor="#a8d8a8"
+  <Button text="▣ Save"   fontSize="12" color="#1e2a3a" textColor="#a8d8a8"
           width="66" onClick="toggleSavePanel" />
 
   <!-- Morale -->
-  <Button text="💀 Morale" fontSize="12" color="#1e2a3a" textColor="#cc99ff"
+  <Button text="☠ Morale" fontSize="12" color="#1e2a3a" textColor="#cc99ff"
           width="72" onClick="toggleMoralePanel" />
 
   <Text text="|" fontSize="14" color="#333355" alignment="MiddleCenter" width="10" />
@@ -3093,11 +3093,11 @@ local function buildXml(ftcMode)
           width="56" onClick="toggleWoundTracker" />
 
   <!-- Teams -->
-  <Button text="👥 Teams"  fontSize="12" color="#1e2a3a" textColor="#ccaaff"
+  <Button text="Teams"  fontSize="12" color="#1e2a3a" textColor="#ccaaff"
           width="68" onClick="toggleTeamsPanel" />
 
   <!-- Yelloscribe -->
-  <Button text="📜 Rules"  fontSize="12" color="#1e2a3a" textColor="#aaaacc"
+  <Button text="Rules"  fontSize="12" color="#1e2a3a" textColor="#aaaacc"
           width="68" onClick="openYelloscribe" />
 
   <!-- Help -->
@@ -3109,7 +3109,7 @@ local function buildXml(ftcMode)
           width="68" onClick="toggleScalePanel" />
 
   <!-- Player side tables -->
-  <Button text="🪑 Tables" fontSize="12" color="#1e2a3a" textColor="#c8b89a"
+  <Button text="Tables" fontSize="12" color="#1e2a3a" textColor="#c8b89a"
           width="68" onClick="spawnSideTables" />
 
   <!-- Stratagems -->
@@ -3117,7 +3117,7 @@ local function buildXml(ftcMode)
           width="68" onClick="toggleStrategemsPanel" />
 
   <!-- New Recruit / BattleScribe import -->
-  <Button text="📥 Import" fontSize="12" color="#1e2a3a" textColor="#88ee88"
+  <Button text="Import" fontSize="12" color="#1e2a3a" textColor="#88ee88"
           width="68" onClick="toggleImportPanel" />
 
   <!-- Surrender -->
@@ -3125,7 +3125,7 @@ local function buildXml(ftcMode)
           width="62" onClick="initiateSurrender" />
 
   <!-- Host-only badge (hidden when off) -->
-  <Text id="host_lock_badge" text="🔒 HOST" fontSize="11" fontStyle="Bold"
+  <Text id="host_lock_badge" text="HOST" fontSize="11" fontStyle="Bold"
         color="#ff5555" alignment="MiddleCenter" active="false" width="60" />
 
   <!-- FTC (conditional) -->
@@ -3144,7 +3144,7 @@ local function buildXml(ftcMode)
   <VerticalLayout padding="8 8 8 8" spacing="6">
 
     <HorizontalLayout height="38" color="#1e2a3a" padding="6 6 4 4">
-      <Text text="🎲 Dice Roller" fontSize="16" fontStyle="Bold"
+      <Text text="⚂ Dice Roller" fontSize="16" fontStyle="Bold"
             color="#7ab8f5" alignment="MiddleLeft" flexibleWidth="1" />
       <Button text="✕" fontSize="14" color="#1a1a2e" textColor="#aaaacc"
               width="32" height="32" onClick="toggleDicePanel" />
@@ -3250,7 +3250,7 @@ local function buildXml(ftcMode)
   <VerticalLayout padding="8 8 8 8" spacing="6">
 
     <HorizontalLayout height="38" color="#0d2a0d" padding="6 6 4 4">
-      <Text text="🛡 Armour Save" fontSize="16" fontStyle="Bold"
+      <Text text="▣ Armour Save" fontSize="16" fontStyle="Bold"
             color="#a8d8a8" alignment="MiddleLeft" flexibleWidth="1" />
       <Button text="✕" fontSize="14" color="#1a1a2e" textColor="#aaaacc"
               width="32" height="32" onClick="toggleSavePanel" />
@@ -3261,7 +3261,7 @@ local function buildXml(ftcMode)
 
     %s
 
-    <Button text="🛡  Roll Saves" fontSize="15"
+    <Button text="▣  Roll Saves" fontSize="15"
             color="#0d3a0d" textColor="#a8d8a8" height="40"
             onClick="rollSavePanel" />
 
@@ -3282,7 +3282,7 @@ local function buildXml(ftcMode)
   <VerticalLayout padding="8 8 8 8" spacing="6">
 
     <HorizontalLayout height="38" color="#1e0a2a" padding="6 6 4 4">
-      <Text text="💀 Morale Test" fontSize="16" fontStyle="Bold"
+      <Text text="☠ Morale Test" fontSize="16" fontStyle="Bold"
             color="#cc99ff" alignment="MiddleLeft" flexibleWidth="1" />
       <Button text="✕" fontSize="14" color="#1a1a2e" textColor="#aaaacc"
               width="32" height="32" onClick="toggleMoralePanel" />
@@ -3293,7 +3293,7 @@ local function buildXml(ftcMode)
 
     %s
 
-    <Button text="💀  Roll Morale Test" fontSize="15"
+    <Button text="☠  Roll Morale Test" fontSize="15"
             color="#2a0a3a" textColor="#cc99ff" height="40"
             onClick="rollMoralePanel" />
 
@@ -3361,7 +3361,7 @@ local function buildXml(ftcMode)
 
     <!-- Header -->
     <HorizontalLayout height="38" color="#2a1a44" padding="6 6 4 4">
-      <Text text="👥 Teams &amp; Match Format" fontSize="15" fontStyle="Bold"
+      <Text text="Teams &amp; Match Format" fontSize="15" fontStyle="Bold"
             color="#ccaaff" alignment="MiddleLeft" flexibleWidth="1" />
       <Button text="✕" fontSize="14" color="#1a1a2e" textColor="#aaaacc"
               width="32" height="32" onClick="toggleTeamsPanel" />
@@ -3551,9 +3551,9 @@ local function buildXml(ftcMode)
        showAnimation="Grow" hideAnimation="Shrink">
   <VerticalLayout padding="0 0 0 0" spacing="0">
     <HorizontalLayout height="46" color="#e63946" padding="8 8 4 4" spacing="6">
-      <Text text="📜 Yelloscribe — WH40K Rules Lookup" fontSize="19"
+      <Text text="Yelloscribe — WH40K Rules Lookup" fontSize="19"
             fontStyle="Bold" color="White" alignment="MiddleLeft" flexibleWidth="1" />
-      <Button text="📋 Pin from URL" fontSize="13" color="#3a2800" textColor="#f0c060"
+      <Button text="Pin from URL" fontSize="13" color="#3a2800" textColor="#f0c060"
               width="112" height="36" onClick="pinCurrentYelloscribePage" />
       <Button text="✕" fontSize="18" color="#c1121f" textColor="White"
               width="40" height="40" onClick="closeYelloscribe" />
@@ -3580,7 +3580,7 @@ local function buildXml(ftcMode)
     <HorizontalLayout spacing="0" height="654">
       <!-- URL input replaces WebBrowser (avoids C# null-ref on Unity web renderer) -->
       <VerticalLayout width="628" flexibleHeight="1" color="#060610" padding="14 14 10 10" spacing="8">
-        <Text text="📜 Yelloscribe Rules Browser" fontSize="17" fontStyle="Bold"
+        <Text text="Yelloscribe Rules Browser" fontSize="17" fontStyle="Bold"
               color="#f0c060" alignment="MiddleCenter" height="26" />
         <Text text="Open yelloscribe.com in your browser, copy a unit or stratagem URL, then paste it below."
               fontSize="11" color="#aaaacc" alignment="MiddleCenter" height="30" />
@@ -3590,18 +3590,18 @@ local function buildXml(ftcMode)
         <Text text=" " fontSize="4" height="6" />
         <Text text="With the URL pasted above you can:" fontSize="12" color="#888899"
               alignment="MiddleLeft" height="18" />
-        <Text text="  • 📋 Pin from URL — saves a data card from the unit page"
+        <Text text="•  Pin from URL — saves a data card from the unit page"
               fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
-        <Text text="  • 🌐 Fetch Stats from Page — auto-fills the stat fields on the right"
+        <Text text="•  Fetch Stats from Page — auto-fills the stat fields on the right"
               fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
-        <Text text="  • ⚡ Pin from URL (Strats section) — saves a stratagem from the page"
+        <Text text="• ⚡ Pin from URL (Strats section) — saves a stratagem from the page"
               fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
       </VerticalLayout>
 
       <!-- ── Data Cards sidebar ───────────────────────────────────────── -->
       <VerticalLayout width="312" color="#0a0a14" padding="5 5 5 5" spacing="3">
 
-        <Text text="📋 Data Cards" fontSize="13" fontStyle="Bold"
+        <Text text="Data Cards" fontSize="13" fontStyle="Bold"
               color="#f0c060" alignment="MiddleCenter" height="19" />
 
         <!-- Unit name + faction -->
@@ -3638,14 +3638,14 @@ local function buildXml(ftcMode)
 
         <!-- Action buttons row 1 -->
         <HorizontalLayout height="28" spacing="3">
-          <Button text="📋 Pin from URL" fontSize="11" color="#1a1400" textColor="#f0c060"
+          <Button text="Pin from URL" fontSize="11" color="#1a1400" textColor="#f0c060"
                   flexibleWidth="1" height="28" onClick="pinCurrentYelloscribePage" />
           <Button text="✚ Save Card" fontSize="11" color="#0a1a0a" textColor="#88ee88"
                   flexibleWidth="1" height="28" onClick="saveDataCard" />
         </HorizontalLayout>
 
         <!-- Action buttons row 2: fetch stats from current browser page -->
-        <Button text="🌐 Fetch Stats from Page" fontSize="11"
+        <Button text="Fetch Stats from Page" fontSize="11"
                 color="#001a22" textColor="#44ccee"
                 height="26" onClick="fetchStatsFromBrowser" />
 
@@ -3734,38 +3734,38 @@ local function buildXml(ftcMode)
               color="#f4d35e" alignment="MiddleCenter" height="20" />
         <Text text="All panels are draggable. Open/close each with its toolbar button."
               fontSize="11" color="#888899" alignment="MiddleLeft" height="16" />
-        <Text text="🎲 Dice — dice roller panel"
+        <Text text="⚂ Dice — dice roller panel"
               fontSize="11" color="#7ab8f5" alignment="MiddleLeft" height="15" />
         <Text text="⚔ Attack — full attack sequence panel"
               fontSize="11" color="#f4a261" alignment="MiddleLeft" height="15" />
-        <Text text="🛡 Save — armour save roller"
+        <Text text="▣ Save — armour save roller"
               fontSize="11" color="#a8d8a8" alignment="MiddleLeft" height="15" />
-        <Text text="💀 Morale — Battleshock test"
+        <Text text="☠ Morale — Battleshock test"
               fontSize="11" color="#cc99ff" alignment="MiddleLeft" height="15" />
         <Text text="⏱ Turn — turn / phase tracker"
               fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
         <Text text="❤ HP — wound / model tracker"
               fontSize="11" color="#ff7777" alignment="MiddleLeft" height="15" />
-        <Text text="👥 Teams — match format and army tracker"
+        <Text text="Teams — match format and army tracker"
               fontSize="11" color="#ccaaff" alignment="MiddleLeft" height="15" />
-        <Text text="📜 Rules — Yelloscribe in-game rules browser"
+        <Text text="Rules — Yelloscribe in-game rules browser"
               fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
         <Text text="⚖ Scale — scale all Custom_Model minis 100/75/50%%"
               fontSize="11" color="#a0d8ef" alignment="MiddleLeft" height="15" />
         <Text text="⚡ Strats — stratagem list + notecard spawner"
               fontSize="11" color="#f4a261" alignment="MiddleLeft" height="15" />
-        <Text text="📥 Import — paste BattleScribe XML to import units + strats from New Recruit"
+        <Text text="Import — paste BattleScribe XML to import units + strats from New Recruit"
               fontSize="11" color="#88ee88" alignment="MiddleLeft" height="15" />
         <Text text="⚑ Yield — open surrender confirmation (removes staged models + cards)"
               fontSize="11" color="#ff6666" alignment="MiddleLeft" height="15" />
 
         <!-- ── DATA CARD FETCH ───────────────────────────────────── -->
         <Text text=" " fontSize="6" height="4" />
-        <Text text="── 🌐 FETCH STATS ──" fontSize="12" fontStyle="Bold"
+        <Text text="──  FETCH STATS ──" fontSize="12" fontStyle="Bold"
               color="#44ccee" alignment="MiddleLeft" height="16" />
-        <Text text="Navigate to a unit page in the 📜 Rules browser, then click"
+        <Text text="Navigate to a unit page in the  Rules browser, then click"
               fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
-        <Text text="'🌐 Fetch Stats from Page' to auto-fill the data card form."
+        <Text text="' Fetch Stats from Page' to auto-fill the data card form."
               fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
         <Text text="Works best on server-rendered pages (Wahapedia, etc.)."
               fontSize="11" color="#666688" alignment="MiddleLeft" height="15" />
@@ -3780,13 +3780,13 @@ local function buildXml(ftcMode)
 
         <!-- ── NEW RECRUIT / BATTLESCRIBE IMPORT ─────────────────── -->
         <Text text=" " fontSize="6" height="4" />
-        <Text text="── 📥 NEW RECRUIT IMPORT ──" fontSize="12" fontStyle="Bold"
+        <Text text="──  NEW RECRUIT IMPORT ──" fontSize="12" fontStyle="Bold"
               color="#88ee88" alignment="MiddleCenter" height="20" />
         <Text text="Export your army list from New Recruit as BattleScribe (.ros)."
               fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
         <Text text="Open the .ros file in any text editor, select all, copy, paste into"
               fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
-        <Text text="the 📥 Import panel, then click Import Units / Import Strats."
+        <Text text="the  Import panel, then click Import Units / Import Strats."
               fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
         <Text text="Import Units — reads W + model count from datasheet profiles."
               fontSize="11" color="#88ee88" alignment="MiddleLeft" height="15" />
@@ -3799,7 +3799,7 @@ local function buildXml(ftcMode)
 
         <!-- ── DICE ROLLER ─────────────────────────────────────── -->
         <Text text=" " fontSize="6" height="4" />
-        <Text text="── 🎲 DICE ROLLER ──" fontSize="12" fontStyle="Bold"
+        <Text text="── ⚂ DICE ROLLER ──" fontSize="12" fontStyle="Bold"
               color="#7ab8f5" alignment="MiddleCenter" height="20" />
         <Text text="Panel: set Count + Sides, click Roll. Results announced to all."
               fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="16" />
@@ -3829,7 +3829,7 @@ local function buildXml(ftcMode)
 
         <!-- ── SAVE ────────────────────────────────────────────── -->
         <Text text=" " fontSize="6" height="4" />
-        <Text text="── 🛡 ARMOUR SAVE ──" fontSize="12" fontStyle="Bold"
+        <Text text="── ▣ ARMOUR SAVE ──" fontSize="12" fontStyle="Bold"
               color="#a8d8a8" alignment="MiddleCenter" height="20" />
         <Text text="Roll saves only (skips hit and wound steps)."
               fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="16" />
@@ -3840,7 +3840,7 @@ local function buildXml(ftcMode)
 
         <!-- ── MORALE ──────────────────────────────────────────── -->
         <Text text=" " fontSize="6" height="4" />
-        <Text text="── 💀 BATTLESHOCK ──" fontSize="12" fontStyle="Bold"
+        <Text text="── ☠ BATTLESHOCK ──" fontSize="12" fontStyle="Bold"
               color="#cc99ff" alignment="MiddleCenter" height="20" />
         <Text text="Rolls 2d6 + models lost vs Leadership. Fail = models flee."
               fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="16" />
@@ -3887,7 +3887,7 @@ local function buildXml(ftcMode)
 
         <!-- ── TEAMS ───────────────────────────────────────────── -->
         <Text text=" " fontSize="6" height="4" />
-        <Text text="── 👥 TEAMS &amp; MATCH FORMAT ──" fontSize="12" fontStyle="Bold"
+        <Text text="──  TEAMS &amp; MATCH FORMAT ──" fontSize="12" fontStyle="Bold"
               color="#ccaaff" alignment="MiddleCenter" height="20" />
         <Text text="Choose a format and click Auto-assign to fill teams from seated players."
               fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
@@ -3908,7 +3908,7 @@ local function buildXml(ftcMode)
 
         <!-- ── YELLOSCRIBE ─────────────────────────────────────── -->
         <Text text=" " fontSize="6" height="4" />
-        <Text text="── 📜 YELLOSCRIBE ──" fontSize="12" fontStyle="Bold"
+        <Text text="──  YELLOSCRIBE ──" fontSize="12" fontStyle="Bold"
               color="#aaaacc" alignment="MiddleCenter" height="20" />
         <Text text="Opens yelloscribe.com inside TTS — browse datasheets and"
               fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
@@ -3925,19 +3925,19 @@ local function buildXml(ftcMode)
               color="#44ee88" alignment="MiddleCenter" height="20" />
         <Text text="When Free the Codex (FTC) is loaded alongside this mod:"
               fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
-        <Text text="  • Turn tracker hides — FTC manages phases and rounds"
+        <Text text="• Turn tracker hides — FTC manages phases and rounds"
               fontSize="11" color="#44bb88" alignment="MiddleLeft" height="15" />
-        <Text text="  • Teams panel stays live and syncs the active army automatically"
+        <Text text="• Teams panel stays live and syncs the active army automatically"
               fontSize="11" color="#44bb88" alignment="MiddleLeft" height="15" />
-        <Text text="  • When FTC hands a turn to a player, the correct team highlights"
+        <Text text="• When FTC hands a turn to a player, the correct team highlights"
               fontSize="11" color="#44bb88" alignment="MiddleLeft" height="15" />
-        <Text text="  • Phase chat messages include the active army name"
+        <Text text="• Phase chat messages include the active army name"
               fontSize="11" color="#44bb88" alignment="MiddleLeft" height="15" />
-        <Text text="  • Wound tracker works normally (FTC units can be imported)"
+        <Text text="• Wound tracker works normally (FTC units can be imported)"
               fontSize="11" color="#44bb88" alignment="MiddleLeft" height="15" />
         <Text text="Import FTC units into wound tracker:"
               fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
-        <Text text="  Toolbar: click ⚙ FTC button   or   Chat: !ftcimport"
+        <Text text="Toolbar: click ⚙ FTC button   or   Chat: !ftcimport"
               fontSize="11" color="#44ee88" alignment="MiddleLeft" height="15" />
         <Text text="Import one unit by GUID:  !ftcunit &lt;GUID&gt;"
               fontSize="11" color="#44ee88" alignment="MiddleLeft" height="15" />
@@ -4115,7 +4115,7 @@ local function buildXml(ftcMode)
 
     <!-- Header -->
     <HorizontalLayout height="32" spacing="4">
-      <Text text="📥 New Recruit / BattleScribe Import" fontSize="14" fontStyle="Bold"
+      <Text text="New Recruit / BattleScribe Import" fontSize="14" fontStyle="Bold"
             color="#88ee88" alignment="MiddleLeft" flexibleWidth="1" />
       <Button text="✕" fontSize="13" color="#0d110d" textColor="#aaaacc"
               width="30" height="30" onClick="toggleImportPanel" />
@@ -4136,13 +4136,13 @@ local function buildXml(ftcMode)
 
     <!-- Import buttons -->
     <HorizontalLayout height="34" spacing="5">
-      <Button text="🧬 Import Units" fontSize="12"
+      <Button text="Import Units" fontSize="12"
               color="#0a1a0a" textColor="#88ee88"
               flexibleWidth="1" height="34" onClick="nrImportUnits" />
       <Button text="⚡ Import Strats" fontSize="12"
               color="#1a0e00" textColor="#f4a261"
               flexibleWidth="1" height="34" onClick="nrImportStrats" />
-      <Button text="🧬+⚡ Import All" fontSize="12"
+      <Button text="+⚡ Import All" fontSize="12"
               color="#111a1a" textColor="#4fc3f7"
               flexibleWidth="1" height="34" onClick="nrImportAll" />
     </HorizontalLayout>

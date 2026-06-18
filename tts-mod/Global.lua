@@ -3739,7 +3739,7 @@ local function buildXml(ftcMode)
               fontSize="11" color="#ccaaff" alignment="MiddleLeft" height="15" />
         <Text text="📜 Rules — Yelloscribe in-game rules browser"
               fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
-        <Text text="⚖ Scale — scale all Custom_Model minis 100/75/50%"
+        <Text text="⚖ Scale — scale all Custom_Model minis 100/75/50%%"
               fontSize="11" color="#a0d8ef" alignment="MiddleLeft" height="15" />
         <Text text="⚡ Strats — stratagem list + notecard spawner"
               fontSize="11" color="#f4a261" alignment="MiddleLeft" height="15" />
@@ -3990,17 +3990,17 @@ local function buildXml(ftcMode)
     <Text text="⚖ Model Scale" fontSize="14" fontStyle="Bold"
           color="#a0d8ef" alignment="MiddleCenter" height="22" />
     <HorizontalLayout height="36" spacing="4">
-      <Button id="scale_btn_100" text="100%" fontSize="13"
+      <Button id="scale_btn_100" text="100%%" fontSize="13"
               color="#4fc3f7" textColor="#0a0a1a"
               flexibleWidth="1" height="36" onClick="scaleAllModels|1.0" />
-      <Button id="scale_btn_75"  text="75%"  fontSize="13"
+      <Button id="scale_btn_75"  text="75%%"  fontSize="13"
               color="#1e2a3a" textColor="#aaaacc"
               flexibleWidth="1" height="36" onClick="scaleAllModels|0.75" />
-      <Button id="scale_btn_50"  text="50%"  fontSize="13"
+      <Button id="scale_btn_50"  text="50%%"  fontSize="13"
               color="#1e2a3a" textColor="#aaaacc"
               flexibleWidth="1" height="36" onClick="scaleAllModels|0.5" />
     </HorizontalLayout>
-    <Text id="scale_status" text="Current: 100%" fontSize="11"
+    <Text id="scale_status" text="Current: 100%%" fontSize="11"
           color="#777799" alignment="MiddleCenter" height="16" />
   </VerticalLayout>
 </Panel>

@@ -34,16 +34,16 @@ title = "WH40K TTS Mod — Workshop Thumbnail"
 id = "dOFT_ul6Wbfd2BWarm7qK"
 uri = "file://tts-mod/WH40K-Mod-Steam-Upload.zip"
 type = "unspecified"
-title = "WH40K TTS Mod — Steam Workshop Upload Package"
+title = "Base Mod — Fixed"
 
 [[outputs]]
 id = "-7J2-qDCLgyuct30hWr6-"
 uri = "file://tts-mod/WH40K-FTC-Upload.zip"
 type = "unspecified"
-title = "FTC Edition — Steam Workshop Upload"
+title = "FTC Edition — Fixed"
 
 [[outputs]]
 id = "iFmP5R3TTH82DUQaSGGRC"
 uri = "file://tts-mod/WH40K-Solo-Upload.zip"
 type = "unspecified"
-title = "Solo Edition — Steam Workshop Upload"
+title = "Solo Edition — Fixed"

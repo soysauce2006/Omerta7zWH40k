@@ -1,6 +1,6 @@
 {
-  "name": "WH40K TTS Mod — Dice · Attack · Turns · HP · Teams · FTC",
-  "description": "Adds a full suite of Warhammer 40K tools to any TTS table:\n\n🎲 Dice Roller — panel + Dice Mat auto-announce\n⚔ Attack — Hit→Wound→Save→Damage calculator\n🛡 Save — armour save roller\n💀 Battleshock — morale / Battleshock test\n⏱ Turn Tracker — 6 WH40K phases with round counter\n❤ Wound Tracker — model-aware HP (damage fills front model first)\n👥 Teams — FFA / 2v1 / 2v2 / 3v2 / 3v3 / 3-Team match formats\n📜 Yelloscribe — in-game browser to yelloscribe.com\n⚙ FTC Compat — full Free the Codex integration (auto-detected)\n❓ Help — scrollable in-game help panel\n\nFTC COMPATIBILITY: Load Free the Codex first — this script detects it automatically. Turn tracker hands off to FTC; Teams panel syncs active army from FTC turn events; ⚙ FTC toolbar button imports FTC unit HP into the wound tracker.\n\nType !help in chat or click ❓ Help for a full command reference.",
+  "name": "WH40K TTS Mod — Dice · Attack · Turns · HP · Teams · Import · FTC",
+  "description": "A single-file Warhammer 40,000 10th Edition toolkit. Paste Global.lua into your table's Global Lua Script slot and everything below is available instantly.\n\n🎲 DICE ROLLER\nPanel with presets (D6, 2D6, D3, Scatter) and free NdS input. Tag any object DiceMat and physical dice rolled on it auto-announce results + sum to all players.\n\n⚔ ATTACK SEQUENCE\nFull Hit → Wound → Save → Damage calculator in one panel. AP modifier applied automatically. Damage supports flat, D3, D6.\n\n🛡 ARMOUR SAVE & 💀 BATTLESHOCK\nMulti-dice save roller with AP. Battleshock test (Ld + models lost vs 2D6).\n\n⏱ TURN TRACKER\n6 WH40K phases (Command, Movement, Shooting, Charge, Fight, Morale) with round counter and army cycling (!next / !prev).\n\n❤ WOUND TRACKER\nModel-aware HP — damage fills the front model first; overflow carries to the next. Up to 12 units. Badge format: 4/5×2W.\n\n👥 TEAMS & MATCH FORMATS\nSix formats: FFA, 2v1, 2v2, 3v2, 3v3, 3-Team. Auto-assign from seated players or assign manually by colour.\n\n📜 YELLOSCRIBE RULES BROWSER\nIn-game browser pointing to yelloscribe.com. Sidebar lets you save unit data cards (M/T/Sv/W/Ld/OC/Faction) as physical notecards on your side table. 🌐 Fetch Stats from Page auto-fills all six stat fields from the current page. 📌 Pin Page pre-fills the unit name from the URL.\n\n⚡ STRATAGEMS\nSave stratagems manually (name, CP 1–3, phase, description) or import from BattleScribe XML. Each stratagem spawns as an amber notecard on the relevant player's side table. Also saveable directly from the Yelloscribe sidebar.\n\n📥 BATTLESCRIBE / NEW RECRUIT IMPORT\nPaste a .ros XML export and click:\n  🧬 Import Units — creates fully-populated data cards (stats extracted from the datasheet profile)\n  ⚡ Import Strats — imports all Stratagem profiles\n  🧬+⚡ Import All — both at once\nHP tracking is intentionally left to ForgeOrg or your preferred army manager.\n\n⚖ MODEL SCALING\nScale all minis to 100% / 75% / 50% via toolbar or !scale <pct>. Original sizes captured on first scale so 100% is always lossless.\n\n🪑 PLAYER SIDE TABLES\nSix colour-coded mats around the perimeter, one per seat colour. Physical data cards and stratagem notecards spawn here automatically.\n\n⚑ SURRENDER\nAny player can concede via the ⚑ Yield button or !surrender. Confirmation panel shows what will be removed. On confirm: staged models, data cards, and stratagems for that player are cleared; a broadcast announces the concession.\n\n≡ TOOLBAR TOGGLE\nA persistent button keeps the toolbar accessible even when hidden. !toolbar in chat does the same.\n\n🔒 HOST-ONLY MODE\n!hostonly on locks all mod controls to the server host. Wound tracking (±HP) remains open for all players.\n\n⚙ FTC COMPATIBILITY\nFree the Codex is auto-detected at load time:\n  - Toolbar repositions to bottom-right to avoid FTC's left rail\n  - Turn Tracker hands off to FTC\n  - Teams panel syncs active army from FTC turn events\n  - Model scaling targets only Miniature-tagged objects (FTC unit models untouched)\n  - DiceMat auto-announce works alongside FTC dice zones\n\nFORGEORG COMPATIBLE — no shared globals, no event hook collisions.\n\nType !help in chat or click ❓ Help for the full command reference.\nAll state persists across save/load.",
   "tags": [
     "Warhammer 40000",
     "40K",
@@ -8,13 +8,18 @@
     "Scripting",
     "FTC",
     "Free the Codex",
+    "ForgeOrg",
     "Dice",
     "Turn Tracker",
     "Wound Tracker",
-    "Teams"
+    "Teams",
+    "Stratagems",
+    "BattleScribe",
+    "New Recruit",
+    "Import"
   ],
   "visibility": "public",
   "file": "WH40K-Mod.json",
   "image": "thumbnail.png",
-  "change_note": "Initial release"
+  "change_note": "v1.4.0 — BattleScribe import now creates fully-populated data cards (M/T/Sv/W/Ld/OC extracted from XML). Fetch Stats from Page auto-fills stat fields from the Yelloscribe browser. HP import removed from unit import (delegate to ForgeOrg). ForgeOrg + Battleforged compatibility confirmed."
 }

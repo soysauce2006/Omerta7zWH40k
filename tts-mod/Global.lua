@@ -1588,7 +1588,7 @@ function closeYelloscribe()  UI.hide("yelloscribe_panel")  end
 -- in the Yelloscribe sidebar by converting the URL slug to title case.
 function pinStratFromURL(player)
     if not checkPerm(player) then return end
-    local url  = UI.getAttribute("ys_browser", "url") or ""
+    local url  = UI.getValue("ys_browser") or ""
     local slug = url:match("/([^/?#]+)%s*$") or ""
     if slug ~= "" and not slug:find("%.") and slug ~= "yelloscribe.com" then
         local name = slug:gsub("[%-_]+", " ")
@@ -1754,9 +1754,9 @@ end
 -- Fetches the current Yelloscribe browser URL and tries to parse unit stats.
 function fetchStatsFromBrowser(player)
     if not checkPerm(player) then return end
-    local url = UI.getAttribute("ys_browser", "url") or ""
-    if url == "" or url == "about:blank" then
-        printToColor("Navigate to a unit page in the rules browser first.", player.color, {r=1,g=0.6,b=0.3})
+    local url = UI.getValue("ys_browser") or ""
+    if url == "" or url == "about:blank" or url == "https://www.yelloscribe.com" then
+        printToColor("Paste a Yelloscribe unit URL into the browser field first.", player.color, {r=1,g=0.6,b=0.3})
         return
     end
     UI.setAttribute("dc_status", "text", "⏳ Fetching from " .. (url:match("https?://([^/]+)") or url) .. "…")
@@ -1773,7 +1773,7 @@ end
 
 function pinCurrentYelloscribePage(player)
     if not checkPerm(player) then return end
-    local url  = UI.getAttribute("ys_browser", "url") or ""
+    local url  = UI.getValue("ys_browser") or ""
     local slug = url:match("/([^/?#]+)%s*$") or ""
     -- Ignore root / domain segments that aren't unit names
     if slug ~= "" and not slug:find("%.") and slug ~= "yelloscribe.com" then
@@ -3578,8 +3578,25 @@ local function buildXml(ftcMode)
 
     <!-- Browser + Data Cards sidebar -->
     <HorizontalLayout spacing="0" height="654">
-      <WebBrowser id="ys_browser" url="https://www.yelloscribe.com"
-                  width="628" flexibleHeight="1" />
+      <!-- URL input replaces WebBrowser (avoids C# null-ref on Unity web renderer) -->
+      <VerticalLayout width="628" flexibleHeight="1" color="#060610" padding="14 14 10 10" spacing="8">
+        <Text text="📜 Yelloscribe Rules Browser" fontSize="17" fontStyle="Bold"
+              color="#f0c060" alignment="MiddleCenter" height="26" />
+        <Text text="Open yelloscribe.com in your browser, copy a unit or stratagem URL, then paste it below."
+              fontSize="11" color="#aaaacc" alignment="MiddleCenter" height="30" />
+        <InputField id="ys_browser" text="https://www.yelloscribe.com"
+                    placeholder="Paste Yelloscribe URL here…"
+                    fontSize="13" height="32" />
+        <Text text=" " fontSize="4" height="6" />
+        <Text text="With the URL pasted above you can:" fontSize="12" color="#888899"
+              alignment="MiddleLeft" height="18" />
+        <Text text="  • 📋 Pin from URL — saves a data card from the unit page"
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="  • 🌐 Fetch Stats from Page — auto-fills the stat fields on the right"
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+        <Text text="  • ⚡ Pin from URL (Strats section) — saves a stratagem from the page"
+              fontSize="11" color="#aaaacc" alignment="MiddleLeft" height="15" />
+      </VerticalLayout>
 
       <!-- ── Data Cards sidebar ───────────────────────────────────────── -->
       <VerticalLayout width="312" color="#0a0a14" padding="5 5 5 5" spacing="3">
@@ -3638,12 +3655,10 @@ local function buildXml(ftcMode)
         <Text id="dc_status" text="No cards pinned yet"
               fontSize="10" color="#555577" alignment="MiddleCenter" height="13" />
 
-        <!-- Scrollable list of pinned cards -->
-        <ScrollView height="180" scrollSensitivity="30">
-          <VerticalLayout spacing="3">
+        <!-- Pinned cards list -->
+        <VerticalLayout height="180" spacing="3">
             %s
-          </VerticalLayout>
-        </ScrollView>
+        </VerticalLayout>
 
         <!-- ── Stratagems sub-section ──────────────────────────────── -->
         <Text text="────────────────" fontSize="9" color="#2a2a44"
@@ -3712,8 +3727,7 @@ local function buildXml(ftcMode)
               width="32" height="32" onClick="toggleHelpPanel" />
     </HorizontalLayout>
 
-    <ScrollView flexibleHeight="1" scrollSensitivity="30">
-      <VerticalLayout spacing="3" padding="2 2 6 2">
+    <VerticalLayout flexibleHeight="1" spacing="3" padding="2 2 6 2">
 
         <!-- ── TOOLBAR ─────────────────────────────────────────── -->
         <Text text="── TOOLBAR ──" fontSize="12" fontStyle="Bold"
@@ -3970,7 +3984,6 @@ local function buildXml(ftcMode)
         <Text text=" " fontSize="6" height="6" />
 
       </VerticalLayout>
-    </ScrollView>
 
   </VerticalLayout>
 </Panel>
@@ -4048,11 +4061,9 @@ local function buildXml(ftcMode)
     <Text text=" " fontSize="4" height="4" />
 
     <!-- Saved stratagem list -->
-    <ScrollView height="264" scrollSensitivity="30">
-      <VerticalLayout spacing="2">
+    <VerticalLayout height="264" spacing="2">
         %s
       </VerticalLayout>
-    </ScrollView>
 
   </VerticalLayout>
 </Panel>

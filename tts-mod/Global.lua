@@ -3059,8 +3059,7 @@ local function buildXml(ftcMode)
      MAIN TOOLBAR  (always visible, draggable)
      ══════════════════════════════════════════════════════════════════ -->
 <HorizontalLayout id="toolbar" position="%s" width="900" height="46"
-                  color="#12121e" padding="4 4 4 4" spacing="3"
-                  allowDragging="true">
+                  color="#12121e" padding="4 4 4 4" spacing="3">
 
   <!-- Section label -->
   <Text text="WH40K" fontSize="11" fontStyle="Bold" color="#e63946"
@@ -3139,8 +3138,7 @@ local function buildXml(ftcMode)
      ══════════════════════════════════════════════════════════════════ -->
 <Panel id="dice_panel" active="false"
        position="-310 180 0" width="310" height="310"
-       color="#12121e" allowDragging="true"
-       showAnimation="Grow" hideAnimation="Shrink">
+       color="#12121e" allowDragging="true">
   <VerticalLayout padding="8 8 8 8" spacing="6">
 
     <HorizontalLayout height="38" color="#1e2a3a" padding="6 6 4 4">
@@ -3203,8 +3201,7 @@ local function buildXml(ftcMode)
      ══════════════════════════════════════════════════════════════════ -->
 <Panel id="attack_panel" active="false"
        position="0 120 0" width="320" height="400"
-       color="#12121e" allowDragging="true"
-       showAnimation="Grow" hideAnimation="Shrink">
+       color="#12121e" allowDragging="true">
   <VerticalLayout padding="8 8 8 8" spacing="5">
 
     <HorizontalLayout height="38" color="#2a1800" padding="6 6 4 4">
@@ -3245,8 +3242,7 @@ local function buildXml(ftcMode)
      ══════════════════════════════════════════════════════════════════ -->
 <Panel id="save_panel" active="false"
        position="340 160 0" width="300" height="260"
-       color="#12121e" allowDragging="true"
-       showAnimation="Grow" hideAnimation="Shrink">
+       color="#12121e" allowDragging="true">
   <VerticalLayout padding="8 8 8 8" spacing="6">
 
     <HorizontalLayout height="38" color="#0d2a0d" padding="6 6 4 4">
@@ -3277,8 +3273,7 @@ local function buildXml(ftcMode)
      ══════════════════════════════════════════════════════════════════ -->
 <Panel id="morale_panel" active="false"
        position="340 -80 0" width="300" height="230"
-       color="#12121e" allowDragging="true"
-       showAnimation="Grow" hideAnimation="Shrink">
+       color="#12121e" allowDragging="true">
   <VerticalLayout padding="8 8 8 8" spacing="6">
 
     <HorizontalLayout height="38" color="#1e0a2a" padding="6 6 4 4">
@@ -3306,8 +3301,7 @@ local function buildXml(ftcMode)
      ══════════════════════════════════════════════════════════════════ -->
 <Panel id="turn_tracker_panel" active="false"
        position="-310 -40 0" width="330" height="268"
-       color="#12121e" allowDragging="true"
-       showAnimation="Grow" hideAnimation="Shrink">
+       color="#12121e" allowDragging="true">
   <VerticalLayout padding="8 8 8 8" spacing="6">
     <HorizontalLayout height="38" color="#e63946" padding="6 6 4 4">
       <Text text="⏱ Turn Tracker" fontSize="16" fontStyle="Bold"
@@ -3328,7 +3322,7 @@ local function buildXml(ftcMode)
     <Text id="tt_team_label" text="No teams configured" fontSize="12"
           color="#aaaacc" alignment="MiddleCenter" height="18" />
 
-    <GridLayout cellWidth="148" cellHeight="28" spacing="4">
+    <GridLayout cellSize="148 28" spacing="4">
       %s
     </GridLayout>
     <HorizontalLayout height="32" spacing="6">
@@ -3355,8 +3349,7 @@ local function buildXml(ftcMode)
      ══════════════════════════════════════════════════════════════════ -->
 <Panel id="teams_panel" active="false"
        position="0 80 0" width="430" height="440"
-       color="#12121e" allowDragging="true"
-       showAnimation="Grow" hideAnimation="Shrink">
+       color="#12121e" allowDragging="true">
   <VerticalLayout padding="8 8 8 8" spacing="6">
 
     <!-- Header -->
@@ -3506,8 +3499,7 @@ local function buildXml(ftcMode)
      ══════════════════════════════════════════════════════════════════ -->
 <Panel id="wound_tracker_panel" active="false"
        position="-310 200 0" width="430" height="570"
-       color="#12121e" allowDragging="true"
-       showAnimation="Grow" hideAnimation="Shrink">
+       color="#12121e" allowDragging="true">
   <VerticalLayout padding="8 8 8 8" spacing="4">
     <HorizontalLayout height="38" color="#e63946" padding="6 6 4 4">
       <Text text="❤ Wound Tracker" fontSize="16" fontStyle="Bold"
@@ -3547,8 +3539,7 @@ local function buildXml(ftcMode)
      ══════════════════════════════════════════════════════════════════ -->
 <Panel id="yelloscribe_panel" active="false"
        position="0 0 0" width="940" height="740"
-       color="#12121e" allowDragging="true"
-       showAnimation="Grow" hideAnimation="Shrink">
+       color="#12121e" allowDragging="true">
   <VerticalLayout padding="0 0 0 0" spacing="0">
     <HorizontalLayout height="46" color="#e63946" padding="8 8 4 4" spacing="6">
       <Text text="Yelloscribe — WH40K Rules Lookup" fontSize="19"
@@ -3715,8 +3706,7 @@ local function buildXml(ftcMode)
      ══════════════════════════════════════════════════════════════════ -->
 <Panel id="help_panel" active="false"
        position="340 60 0" width="450" height="660"
-       color="#0d0d1a" allowDragging="true"
-       showAnimation="Grow" hideAnimation="Shrink">
+       color="#0d0d1a" allowDragging="true">
   <VerticalLayout padding="8 8 8 8" spacing="4">
 
     <!-- Header -->
@@ -3994,8 +3984,7 @@ local function buildXml(ftcMode)
      ══════════════════════════════════════════════════════════════════ -->
 <Panel id="scale_panel" active="false"
        position="560 0 0" width="250" height="118"
-       color="#12121e" allowDragging="true"
-       showAnimation="Grow" hideAnimation="Shrink">
+       color="#12121e" allowDragging="true">
   <VerticalLayout padding="8 8 8 8" spacing="6">
     <Text text="⚖ Model Scale" fontSize="14" fontStyle="Bold"
           color="#a0d8ef" alignment="MiddleCenter" height="22" />
@@ -4021,8 +4010,7 @@ local function buildXml(ftcMode)
      ══════════════════════════════════════════════════════════════════ -->
 <Panel id="strat_panel" active="false"
        position="560 180 0" width="320" height="490"
-       color="#12121e" allowDragging="true"
-       showAnimation="Grow" hideAnimation="Shrink">
+       color="#12121e" allowDragging="true">
   <VerticalLayout padding="8 8 8 8" spacing="5">
 
     <!-- Title -->
@@ -4074,8 +4062,7 @@ local function buildXml(ftcMode)
      ══════════════════════════════════════════════════════════════════ -->
 <Panel id="surrender_panel" active="false"
        position="0 0 0" width="360" height="230"
-       color="#1a0000" allowDragging="true"
-       showAnimation="Grow" hideAnimation="Shrink">
+       color="#1a0000" allowDragging="true">
   <VerticalLayout padding="12 12 12 12" spacing="8">
 
     <Text text="⚑  SURRENDER" fontSize="20" fontStyle="Bold"
@@ -4109,8 +4096,7 @@ local function buildXml(ftcMode)
      ══════════════════════════════════════════════════════════════════ -->
 <Panel id="import_panel" active="false"
        position="0 60 0" width="560" height="460"
-       color="#0d110d" allowDragging="true"
-       showAnimation="Grow" hideAnimation="Shrink">
+       color="#0d110d" allowDragging="true">
   <VerticalLayout padding="10 10 10 10" spacing="6">
 
     <!-- Header -->
@@ -4226,23 +4212,15 @@ function onLoad(save_state)
     math.randomseed(os.time())
 
     -- ── FTC detection ────────────────────────────────────────────────
-    -- FTC registers itself as the global table `FTC` before onLoad fires.
     FTC_PRESENT = (type(FTC) == "table")
-    if FTC_PRESENT then
-        log("Free the Codex detected — FTC compatibility mode active.")
-        log("Use !ftcimport to pull FTC units into the wound tracker.")
-    else
-        log("Free the Codex not detected — running standalone.")
-    end
+    printToAll("[WH40K] onLoad step 1 — FTC=" .. tostring(FTC_PRESENT), {1,1,0})
 
-    -- Build and inject UI (toolbar position depends on FTC_PRESENT)
-    local xmlOk, xmlErr = pcall(function()
-        UI.setXml(buildXml(FTC_PRESENT))
-    end)
-    if not xmlOk then
-        log("[WH40K] UI.setXml failed: " .. tostring(xmlErr))
-        printToAll("[WH40K] UI load error — check Scripting Console: " .. tostring(xmlErr), {1,0.4,0.4})
-    end
+    -- Build and inject UI
+    local xml = buildXml(FTC_PRESENT)
+    printToAll("[WH40K] onLoad step 2 — XML built (" .. #xml .. " chars)", {1,1,0})
+
+    UI.setXml(xml)
+    printToAll("[WH40K] onLoad step 3 — UI.setXml returned", {1,1,0})
 
     -- Restore saved state
     if save_state and save_state ~= "" then

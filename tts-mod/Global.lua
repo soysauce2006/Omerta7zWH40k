@@ -240,13 +240,13 @@ function spawnSideTables()
             scale             = {7, 0.2, 5},
             color             = cfg.clr,
             script            = SIDE_TABLE_SCRIPT,
-            -- Lock immediately after spawn so the table floats at its
-            -- spawn height instead of falling.  Players right-click →
-            -- Toggle Lock to move it, then Toggle Lock again to re-pin it.
+            -- Zero gravity so the table floats freely at whatever height
+            -- the player places it.  Start unlocked so it can be grabbed
+            -- immediately.  Right-click → Toggle Lock to pin it in place.
             callback_function = function(o)
-                o.setLock(true)
+                o.use_gravity = false
                 o.setName(label .. " — Player Area")
-                o.setDescription("Right-click → Toggle Lock to move, then lock again to float in place.")
+                o.setDescription("Drag to position → Right-click → Toggle Lock to pin in place.")
                 o.addTag(SIDE_TABLE_TAG)
             end,
         })
@@ -453,6 +453,20 @@ local MAX_STRATAGEMS = 20
 -- FTC COMPATIBILITY STATE
 ------------------------------------------------------------------------
 local FTC_PRESENT = false   -- set in onLoad after FTC detection
+
+-- Toggle FTC mode at runtime (used by !ftc on/off and additive-load detection).
+-- Rebuilds the XML UI so the FTC toolbar button appears/disappears immediately.
+local function setFtcMode(enable)
+    FTC_PRESENT = enable
+    UI.setXml(buildXml(FTC_PRESENT))
+    Wait.time(function()
+        refreshTurnUI(); refreshWoundUI(); refreshTeamUI()
+        refreshDataCardsUI(); refreshScaleUI()
+        refreshHostModeUI(); refreshStrategemsUI()
+    end, 0.3)
+    broadcastToAll("WH40K: FTC mode " .. (enable and "ENABLED" or "DISABLED")
+                   .. "  (toolbar updated)", {1, 0.9, 0.5})
+end
 
 -- Safe wrapper: call an FTC API function only when FTC is loaded
 local function ftcCall(fn, ...)
@@ -2663,6 +2677,23 @@ function onChat(message, player)
         return false
 
     -- FTC-specific commands
+    elseif cmd == "!ftc" then
+        if not isHost(player) then
+            printToColor("Only the host can toggle FTC mode.", player.color, {r=1,g=0.5,b=0.5})
+            return false
+        end
+        local sub = args:lower():match("^(%S+)")
+        if sub == "on" then
+            setFtcMode(true)
+        elseif sub == "off" then
+            setFtcMode(false)
+        else
+            printToColor("Usage: !ftc on  |  !ftc off  (current: "
+                         .. (FTC_PRESENT and "on" or "off") .. ")",
+                         player.color, {r=0.7,g=0.9,b=1})
+        end
+        return false
+
     elseif cmd == "!ftcimport" then
         importAllFtcUnits()
         return false
@@ -2776,9 +2807,11 @@ function onChat(message, player)
         return false
     elseif cmd == "!help" then
         local ftcLine = FTC_PRESENT
-            and "!ftcimport              — import all FTC units into wound tracker\n"..
+            and "!ftc on|off             — toggle FTC mode (rebuilds toolbar)\n"..
+                "!ftcimport              — import all FTC units into wound tracker\n"..
                 "!ftcunit <GUID>         — import one FTC unit card by GUID"
-            or  "(FTC not detected — FTC commands inactive)"
+            or  "!ftc on                 — enable FTC mode (additive load over FTC)\n"..
+                "(FTC commands active only while FTC mode is on)"
         local h = {
             "═══════════ WH40K Mod Commands ═══════════",
             "!roll <N>d<S>                — free dice roll",
@@ -4264,15 +4297,22 @@ function onLoad(save_state)
     math.randomseed(os.time())
 
     -- ── FTC detection ────────────────────────────────────────────────
+    -- Primary: FTC global table present (standalone FTC save loaded).
+    -- Fallback: scan existing objects for FTC indicators so additive
+    --           loading our mod on top of a running FTC session works.
     FTC_PRESENT = (type(FTC) == "table")
-    printToAll("[WH40K] onLoad step 1 — FTC=" .. tostring(FTC_PRESENT), {1,1,0})
+    if not FTC_PRESENT then
+        for _, obj in ipairs(getAllObjects()) do
+            local n = (obj.getName() or ""):lower()
+            if n:find("ftc") or obj.hasTag("FTC") then
+                FTC_PRESENT = true
+                break
+            end
+        end
+    end
 
     -- Build and inject UI
-    local xml = buildXml(FTC_PRESENT)
-    printToAll("[WH40K] onLoad step 2 — XML built (" .. #xml .. " chars)", {1,1,0})
-
-    UI.setXml(xml)
-    printToAll("[WH40K] onLoad step 3 — UI.setXml returned", {1,1,0})
+    UI.setXml(buildXml(FTC_PRESENT))
 
     -- Restore saved state
     if save_state and save_state ~= "" then

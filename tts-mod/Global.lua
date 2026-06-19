@@ -44,6 +44,9 @@ local MAX_HISTORY   = 20
 local MAX_UNITS     = 12
 local MAX_DATACARDS = 30
 
+-- Forward declarations so functions defined before the state blocks can see them
+local dataCards, stratagems
+
 ------------------------------------------------------------------------
 -- MODEL SCALE STATE
 ------------------------------------------------------------------------
@@ -406,13 +409,13 @@ end
 -- DATA CARDS STATE
 ------------------------------------------------------------------------
 -- Each entry: { name, faction, M, T, Sv, W, Ld, OC, notes, playerColor }
-local dataCards = {}
+dataCards = {}
 
 ------------------------------------------------------------------------
 -- STRATAGEMS STATE
 ------------------------------------------------------------------------
 -- Each entry: { name, cp, phase, desc, playerColor }
-local stratagems     = {}
+stratagems           = {}
 local MAX_STRATAGEMS = 20
 
 ------------------------------------------------------------------------

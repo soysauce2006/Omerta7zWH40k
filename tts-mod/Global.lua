@@ -232,21 +232,27 @@ end
 function spawnSideTables()
     clearSideTables()
     for _, cfg in ipairs(SIDE_TABLE_CFG) do
-        local obj = spawnObject({
-            type     = "BlockRectangle",
-            position = cfg.pos,
-            rotation = cfg.rot,
-            scale    = {7, 0.2, 5},
-            color    = cfg.clr,
-            script   = SIDE_TABLE_SCRIPT,
-        })
         local label = seatLabel(cfg.name)
-        obj.setName(label .. " — Player Area")
-        obj.setDescription("Right-click: change colour or lock/unlock. Scale/move freely.")
-        obj.addTag(SIDE_TABLE_TAG)
+        local obj = spawnObject({
+            type              = "BlockRectangle",
+            position          = cfg.pos,
+            rotation          = cfg.rot,
+            scale             = {7, 0.2, 5},
+            color             = cfg.clr,
+            script            = SIDE_TABLE_SCRIPT,
+            -- Lock immediately after spawn so the table floats at its
+            -- spawn height instead of falling.  Players right-click →
+            -- Toggle Lock to move it, then Toggle Lock again to re-pin it.
+            callback_function = function(o)
+                o.setLock(true)
+                o.setName(label .. " — Player Area")
+                o.setDescription("Right-click → Toggle Lock to move, then lock again to float in place.")
+                o.addTag(SIDE_TABLE_TAG)
+            end,
+        })
         table.insert(sideTableGuids, obj.getGUID())
     end
-    log("Player side tables placed — right-click for colour options and lock toggle.")
+    log("Player side tables placed — locked in place. Right-click → Toggle Lock to reposition.")
 end
 
 -- When FTC is active, move every DiceMat object onto its matching side table

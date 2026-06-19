@@ -34,19 +34,19 @@ title = "WH40K TTS Mod — Workshop Thumbnail"
 id = "dOFT_ul6Wbfd2BWarm7qK"
 uri = "file://tts-mod/WH40K-Mod-Steam-Upload.zip"
 type = "unspecified"
-title = "Base Mod — no-Image toolbar + Canvas passthrough"
+title = "Base Mod — tables float in place"
 
 [[outputs]]
 id = "-7J2-qDCLgyuct30hWr6-"
 uri = "file://tts-mod/WH40K-FTC-Upload.zip"
 type = "unspecified"
-title = "FTC Edition — no-Image toolbar + Canvas passthrough"
+title = "FTC Edition — tables float in place"
 
 [[outputs]]
 id = "iFmP5R3TTH82DUQaSGGRC"
 uri = "file://tts-mod/WH40K-Solo-Upload.zip"
 type = "unspecified"
-title = "Solo Edition — no-Image toolbar + Canvas passthrough"
+title = "Solo Edition — tables float in place"
 
 [[outputs]]
 id = "VUW-qIVi-i64CzzqF2UN2"

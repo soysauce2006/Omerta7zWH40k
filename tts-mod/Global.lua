@@ -3085,7 +3085,7 @@ local function buildXml(ftcMode)
         and '<Text text="⚙ FTC" fontSize="11" color="#44bb88" alignment="MiddleCenter" width="52" />'
         or  ""
 
-    return string.format([[
+    local xml = string.format([[
 <Canvas>
 
 <!-- ══════════════════════════════════════════════════════════════════
@@ -4219,6 +4219,26 @@ local function buildXml(ftcMode)
     -- 11: Stratagem panel slots
     buildStragegemSlots()
     )
+
+    -- ── Raycast passthrough fix ──────────────────────────────────────────────
+    -- In TTS, layout elements with a color attribute get an Image component
+    -- that blocks physics raycasts to game objects on the table — even when
+    -- the element is tiny (e.g. the toolbar strip).  Setting raycastTarget=
+    -- "false" on every container / text element lets clicks pass through to
+    -- the game world.  Button and InputField elements keep their default
+    -- raycastTarget=true so they still receive UI input.
+    xml = xml:gsub('<HorizontalLayout ', '<HorizontalLayout raycastTarget="false" ')
+    xml = xml:gsub('<VerticalLayout ',   '<VerticalLayout raycastTarget="false" ')
+    xml = xml:gsub('<GridLayout ',       '<GridLayout raycastTarget="false" ')
+    xml = xml:gsub('<Text ',             '<Text raycastTarget="false" ')
+    -- Panels without allowDragging also don't need to block the game world.
+    -- Draggable panels keep their default because Unity needs raycast for drag.
+    xml = xml:gsub('<Panel ([^>]-active="false"[^>]-allowDragging="true")',
+                   '<Panel %1')   -- leave draggable panels as-is
+    -- Non-draggable panels: passthrough
+    xml = xml:gsub('<Panel (id="host_lock_badge")', '<Panel raycastTarget="false" %1')
+
+    return xml
 end
 
 ------------------------------------------------------------------------

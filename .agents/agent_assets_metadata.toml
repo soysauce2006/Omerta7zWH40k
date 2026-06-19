@@ -47,3 +47,21 @@ id = "iFmP5R3TTH82DUQaSGGRC"
 uri = "file://tts-mod/WH40K-Solo-Upload.zip"
 type = "unspecified"
 title = "Solo Edition — Diagnostic build"
+
+[[outputs]]
+id = "VUW-qIVi-i64CzzqF2UN2"
+uri = "file://tts-mod/WH40K-Diagnostic.zip"
+type = "unspecified"
+title = "DIAGNOSTIC — Minimal Lua (load this first)"
+
+[[outputs]]
+id = "_DH5sTo5qo2jfmtT0d9-e"
+uri = "file://tts-mod/WH40K-DiagA.zip"
+type = "unspecified"
+title = "DIAG-A — empty Table/Sky (try this first)"
+
+[[outputs]]
+id = "DsDh8xAWAaTYPOTrMDLar"
+uri = "file://tts-mod/WH40K-DiagB.zip"
+type = "unspecified"
+title = "DIAG-B — Table_RPG + Sky_Patio (try second)"

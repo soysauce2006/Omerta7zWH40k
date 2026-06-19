@@ -3086,16 +3086,16 @@ local function buildXml(ftcMode)
         or  ""
 
     local xml = string.format([[
-<Canvas>
+<Canvas raycastTarget="false">
 
 <!-- ══════════════════════════════════════════════════════════════════
      MAIN TOOLBAR  (always visible)
-     Panel carries the background; raycastTarget="false" so the dark
-     strip does NOT block clicks to game objects on the table.
+     HorizontalLayout with NO color = no Image component at all.
+     Image components are what the GraphicRaycaster intercepts;
+     omitting color guarantees zero blocking of game-object clicks.
      ══════════════════════════════════════════════════════════════════ -->
-<Panel id="toolbar" position="%s" width="900" height="46"
-       color="#12121e" raycastTarget="false">
-<HorizontalLayout padding="4 4 4 4" spacing="3">
+<HorizontalLayout id="toolbar" position="%s" width="900" height="46"
+                  padding="4 4 4 4" spacing="3">
 
   <!-- Section label -->
   <Text text="WH40K" fontSize="11" fontStyle="Bold" color="#e63946"
@@ -3167,7 +3167,6 @@ local function buildXml(ftcMode)
   %s
 
 </HorizontalLayout>
-</Panel>
 
 
 <!-- ══════════════════════════════════════════════════════════════════

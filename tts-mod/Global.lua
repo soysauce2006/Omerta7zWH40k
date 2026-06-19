@@ -117,7 +117,7 @@ end
 -- onClick="scaleAllModels|0.75" passes only the value (no player identity).
 -- Permission for button clicks is intentionally not enforced here because
 -- |value onClick callbacks don't carry player identity; chat !scale IS gated.
-function scaleAllModels(factorStr)
+function scaleAllModels(_, factorStr)
     local factor = tonumber(factorStr)
     if not factor or factor <= 0 then
         log("Usage: !scale <percent>  e.g. !scale 75")
@@ -204,7 +204,31 @@ function refreshSideTableNames()
     end
 end
 
+-- Object script embedded in each side table:
+-- right-click colour picker + Toggle Lock so tables can float at any height.
+local SIDE_TABLE_SCRIPT = [[
+function onLoad()
+    addContextMenuItem("Colour: White",  function() self.setColorTint({0.95,0.95,0.95}) end)
+    addContextMenuItem("Colour: Black",  function() self.setColorTint({0.10,0.10,0.10}) end)
+    addContextMenuItem("Colour: Red",    function() self.setColorTint({0.86,0.10,0.10}) end)
+    addContextMenuItem("Colour: Blue",   function() self.setColorTint({0.13,0.30,0.80}) end)
+    addContextMenuItem("Colour: Green",  function() self.setColorTint({0.19,0.70,0.17}) end)
+    addContextMenuItem("Colour: Yellow", function() self.setColorTint({0.95,0.80,0.10}) end)
+    addContextMenuItem("Colour: Orange", function() self.setColorTint({0.96,0.42,0.07}) end)
+    addContextMenuItem("Colour: Teal",   function() self.setColorTint({0.13,0.85,0.60}) end)
+    addContextMenuItem("Colour: Purple", function() self.setColorTint({0.60,0.10,0.80}) end)
+    addContextMenuItem("Colour: Brown",  function() self.setColorTint({0.55,0.27,0.07}) end)
+    addContextMenuItem("Toggle Lock",    function()
+        local locked = self.getLock()
+        self.setLock(not locked)
+        printToAll(self.getName() .. (locked and " unlocked." or " locked in place."), {0.7,0.9,1})
+    end)
+end
+]]
+
 -- Spawn (or re-spawn) all six side tables.
+-- Tables are unlocked by default — move and scale them freely with TTS tools.
+-- Right-click → Colour to recolour. Right-click → Toggle Lock to pin in place.
 function spawnSideTables()
     clearSideTables()
     for _, cfg in ipairs(SIDE_TABLE_CFG) do
@@ -214,14 +238,15 @@ function spawnSideTables()
             rotation = cfg.rot,
             scale    = {7, 0.2, 5},
             color    = cfg.clr,
+            script   = SIDE_TABLE_SCRIPT,
         })
         local label = seatLabel(cfg.name)
         obj.setName(label .. " — Player Area")
-        obj.setDescription("Dice · Tokens · Reserves")
+        obj.setDescription("Right-click: change colour or lock/unlock. Scale/move freely.")
         obj.addTag(SIDE_TABLE_TAG)
         table.insert(sideTableGuids, obj.getGUID())
     end
-    log("Player side tables placed — drag them wherever you like!")
+    log("Player side tables placed — right-click for colour options and lock toggle.")
 end
 
 -- When FTC is active, move every DiceMat object onto its matching side table
@@ -967,7 +992,7 @@ local function refreshTeamUI()
 end
 
 -- Build (or rebuild) teams from seated players for the given mode
-function setTeamMode(modeStr)
+function setTeamMode(_, modeStr)
     modeStr = modeStr and modeStr:lower() or "ffa"
     -- Normalise: accept "1v2" as "2v1"
     if modeStr == "1v2" then modeStr = "2v1" end
@@ -1042,7 +1067,7 @@ function autoAssignTeams(player)
 end
 
 -- Move a player (by their TTS colour) to the given team index (1 or 2)
-function assignToTeam(teamIndexStr)
+function assignToTeam(_, teamIndexStr)
     local teamIndex = tonumber(teamIndexStr)
     local color     = UI.getValue("tm_assign_color_input")
     if not teamIndex or not color or color == "" then
@@ -1072,7 +1097,7 @@ function assignToTeam(teamIndexStr)
 end
 
 -- Rename a team (1 or 2) using the text field in the panel
-function renameTeam(teamIndexStr)
+function renameTeam(_, teamIndexStr)
     local ti   = tonumber(teamIndexStr)
     local name = UI.getValue("tm_t" .. (ti or 0) .. "_name_input")
     local t    = ti and teamConfig.teams[ti]
@@ -1247,7 +1272,7 @@ function addUnit(name, woundsPerModel, modelsCount, ftcGuid)
     refreshWoundUI()
 end
 
-function removeUnit(indexStr)
+function removeUnit(_, indexStr)
     local i = tonumber(indexStr)
     if i and woundTracker[i] then
         log("Removed: " .. woundTracker[i].name)
@@ -1371,7 +1396,7 @@ function healUnit(name, amount)
     refreshWoundUI()
 end
 
-function selectUnit(indexStr)
+function selectUnit(_, indexStr)
     selectedUnit = tonumber(indexStr)
     local u = selectedUnit and woundTracker[selectedUnit]
     if u then
@@ -1411,12 +1436,12 @@ function applyDamageToSelected(amount, sourceLabel)
     refreshWoundUI()
 end
 
-function woundBtnMinus(indexStr)
+function woundBtnMinus(_, indexStr)
     local unit = tonumber(indexStr) and woundTracker[tonumber(indexStr)]
     if unit then applyWounds(unit.name, 1) end
 end
 
-function woundBtnPlus(indexStr)
+function woundBtnPlus(_, indexStr)
     local unit = tonumber(indexStr) and woundTracker[tonumber(indexStr)]
     if unit then healUnit(unit.name, 1) end
 end
@@ -1827,7 +1852,7 @@ function saveDataCard(player)
     log(" Data card pinned: " .. name .. (dc.playerColor ~= "" and (" [" .. dc.playerColor .. "]") or ""))
 end
 
-function removeDataCard(slotStr)
+function removeDataCard(_, slotStr)
     local slot = tonumber(slotStr)   -- 0-based slot from XML onClick
     if not slot then return end
     local idx = slot + 1             -- Lua 1-based index
@@ -1944,7 +1969,7 @@ function saveStratagem(player)
         (s.playerColor ~= "" and (" [" .. s.playerColor .. "]") or ""))
 end
 
-function removeStratagem(slotStr)
+function removeStratagem(_, slotStr)
     local slot = tonumber(slotStr)
     if not slot then return end
     local idx = slot + 1
@@ -2787,12 +2812,17 @@ end
 ------------------------------------------------------------------------
 -- FUNCTION PANEL TOGGLES
 ------------------------------------------------------------------------
+-- Track open/closed state locally — UI.getAttribute doesn't reflect
+-- runtime state after UI.show()/UI.hide() calls in all TTS versions.
+local panelOpen = {}
+
 local function togglePanel(id)
-    local vis = UI.getAttribute(id, "active")
-    if vis == "true" or vis == true then
+    if panelOpen[id] then
         UI.hide(id)
+        panelOpen[id] = false
     else
         UI.show(id)
+        panelOpen[id] = true
     end
 end
 
@@ -2806,7 +2836,7 @@ function toggleMoralePanel()  togglePanel("morale_panel")  end
 ------------------------------------------------------------------------
 
 -- Quick preset roll triggered by a toolbar button: param = "NdS"
-function quickRoll(param)
+function quickRoll(_, param)
     local num, sides = tostring(param):match("(%d+)d(%d+)")
     num = tonumber(num); sides = tonumber(sides)
     if not num or not sides then return end

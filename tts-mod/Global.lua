@@ -3089,10 +3089,13 @@ local function buildXml(ftcMode)
 <Canvas>
 
 <!-- ══════════════════════════════════════════════════════════════════
-     MAIN TOOLBAR  (always visible, draggable)
+     MAIN TOOLBAR  (always visible)
+     Panel carries the background; raycastTarget="false" so the dark
+     strip does NOT block clicks to game objects on the table.
      ══════════════════════════════════════════════════════════════════ -->
-<HorizontalLayout id="toolbar" position="%s" width="900" height="46"
-                  color="#12121e" padding="4 4 4 4" spacing="3">
+<Panel id="toolbar" position="%s" width="900" height="46"
+       color="#12121e" raycastTarget="false">
+<HorizontalLayout padding="4 4 4 4" spacing="3">
 
   <!-- Section label -->
   <Text text="WH40K" fontSize="11" fontStyle="Bold" color="#e63946"
@@ -3164,6 +3167,7 @@ local function buildXml(ftcMode)
   %s
 
 </HorizontalLayout>
+</Panel>
 
 
 <!-- ══════════════════════════════════════════════════════════════════
@@ -4220,23 +4224,13 @@ local function buildXml(ftcMode)
     buildStragegemSlots()
     )
 
-    -- ── Raycast passthrough fix ──────────────────────────────────────────────
-    -- In TTS, layout elements with a color attribute get an Image component
-    -- that blocks physics raycasts to game objects on the table — even when
-    -- the element is tiny (e.g. the toolbar strip).  Setting raycastTarget=
-    -- "false" on every container / text element lets clicks pass through to
-    -- the game world.  Button and InputField elements keep their default
-    -- raycastTarget=true so they still receive UI input.
-    xml = xml:gsub('<HorizontalLayout ', '<HorizontalLayout raycastTarget="false" ')
-    xml = xml:gsub('<VerticalLayout ',   '<VerticalLayout raycastTarget="false" ')
-    xml = xml:gsub('<GridLayout ',       '<GridLayout raycastTarget="false" ')
-    xml = xml:gsub('<Text ',             '<Text raycastTarget="false" ')
-    -- Panels without allowDragging also don't need to block the game world.
-    -- Draggable panels keep their default because Unity needs raycast for drag.
-    xml = xml:gsub('<Panel ([^>]-active="false"[^>]-allowDragging="true")',
-                   '<Panel %1')   -- leave draggable panels as-is
-    -- Non-draggable panels: passthrough
-    xml = xml:gsub('<Panel (id="host_lock_badge")', '<Panel raycastTarget="false" %1')
+    -- ── Raycast passthrough: Text elements ──────────────────────────────────
+    -- TTS honours raycastTarget="false" on Text (it has a Graphic component).
+    -- Layout groups (HorizontalLayout etc.) do NOT expose raycastTarget — the
+    -- attribute is silently ignored.  The toolbar panel was restructured to
+    -- <Panel raycastTarget="false"> to fix the whole-field click-blocking.
+    -- Text labels scattered through the XML don't need to eat mouse events.
+    xml = xml:gsub('<Text ', '<Text raycastTarget="false" ')
 
     return xml
 end

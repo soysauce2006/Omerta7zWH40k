@@ -46,6 +46,9 @@ local MAX_DATACARDS = 30
 
 -- Forward declarations so functions defined before the state blocks can see them
 local dataCards, stratagems
+-- UI builder and refresh helpers referenced by setFtcMode (defined later in file)
+local buildXml, refreshTurnUI, refreshWoundUI, refreshTeamUI
+local refreshDataCardsUI, refreshScaleUI, refreshHostModeUI, refreshStrategemsUI
 
 ------------------------------------------------------------------------
 -- MODEL SCALE STATE
@@ -4303,8 +4306,12 @@ function onLoad(save_state)
     FTC_PRESENT = (type(FTC) == "table")
     if not FTC_PRESENT then
         for _, obj in ipairs(getAllObjects()) do
-            local n = (obj.getName() or ""):lower()
-            if n:find("ftc") or obj.hasTag("FTC") then
+            -- pcall: scripting zones / camera objects throw on getName/hasTag
+            local ok, found = pcall(function()
+                local n = (obj.getName() or ""):lower()
+                return n:find("ftc") or obj.hasTag("FTC")
+            end)
+            if ok and found then
                 FTC_PRESENT = true
                 break
             end
